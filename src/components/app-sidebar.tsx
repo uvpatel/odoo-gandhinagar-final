@@ -26,7 +26,7 @@ const data = {
   navMain: [
     {
       title: "Dashboard",
-      url: "#",
+      url: "/dashboard",
       icon: (
         <LayoutDashboardIcon
         />
@@ -34,7 +34,7 @@ const data = {
     },
     {
       title: "Lifecycle",
-      url: "#",
+      url: "/lifecycle",
       icon: (
         <ListIcon
         />
@@ -42,7 +42,7 @@ const data = {
     },
     {
       title: "Analytics",
-      url: "#",
+      url: "/analytics",
       icon: (
         <ChartBarIcon
         />
@@ -50,7 +50,7 @@ const data = {
     },
     {
       title: "Projects",
-      url: "#",
+      url: "/projects",
       icon: (
         <FolderIcon
         />
@@ -58,7 +58,7 @@ const data = {
     },
     {
       title: "Team",
-      url: "#",
+      url: "/team",
       icon: (
         <UsersIcon
         />
@@ -125,7 +125,7 @@ const data = {
   navSecondary: [
     {
       title: "Settings",
-      url: "#",
+      url: "/settings",
       icon: (
         <Settings2Icon
         />
@@ -133,7 +133,7 @@ const data = {
     },
     {
       title: "Get Help",
-      url: "#",
+      url: "/help",
       icon: (
         <CircleHelpIcon
         />
@@ -141,7 +141,7 @@ const data = {
     },
     {
       title: "Search",
-      url: "#",
+      url: "/search",
       icon: (
         <SearchIcon
         />
@@ -175,7 +175,17 @@ const data = {
     },
   ],
 }
+import { authClient } from "@/lib/auth-client";
+
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const { data: session } = authClient.useSession();
+
+  const currentUser = {
+    name: session?.user?.name || "Acme User",
+    email: session?.user?.email || "user@example.com",
+    avatar: session?.user?.image || "/avatars/shadcn.jpg",
+  };
+
   return (
     <Sidebar collapsible="offcanvas" {...props}>
       <SidebarHeader>
@@ -197,8 +207,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <NavSecondary items={data.navSecondary} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={data.user} />
+        <NavUser user={currentUser} />
       </SidebarFooter>
     </Sidebar>
-  )
+  );
 }

@@ -9,6 +9,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import Link from "next/link"
 
 export function NavSecondary({
   items,
@@ -28,7 +29,7 @@ export function NavSecondary({
             <SidebarMenuItem key={item.title}>
               <SidebarMenuButton render={<a href={item.url} />}>
                 {item.icon}
-                <span>{item.title}</span>
+                <span><Link href={item.url}>{item.title}</Link></span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           ))}
