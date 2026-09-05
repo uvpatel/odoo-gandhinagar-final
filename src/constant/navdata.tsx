@@ -1,162 +1,317 @@
-import { GalleryVerticalEndIcon, AudioLinesIcon, TerminalIcon, TerminalSquareIcon, BotIcon, BookOpenIcon, Settings2Icon, FrameIcon, PieChartIcon, MapIcon } from "lucide-react"
-
+import {
+  LayoutDashboardIcon,
+  UsersIcon,
+  UserRoundIcon,
+  FileTextIcon,
+  CalendarClockIcon,
+  Clock3Icon,
+  CalendarDaysIcon,
+  ClipboardListIcon,
+  WalletCardsIcon,
+  BanknoteIcon,
+  ReceiptTextIcon,
+  ChartNoAxesCombinedIcon,
+  Building2Icon,
+  BriefcaseBusinessIcon,
+  Settings2Icon,
+  ShieldCheckIcon,
+  CalendarRangeIcon,
+  TagsIcon,
+  ListChecksIcon,
+  GalleryVerticalEndIcon,
+  AudioLinesIcon,
+  TerminalIcon,
+} from "lucide-react"
 
 export const data = {
   user: {
-    name: "shadcn",
-    email: "m@example.com",
-    avatar: "/avatars/shadcn.jpg",
+    name: "Urvil Patel",
+    email: "urvil@example.com",
+    avatar: "/avatars/user.jpg",
   },
+
   teams: [
     {
-      name: "PeoplyPay360 Inc",
-      logo: (
-        <GalleryVerticalEndIcon
-        />
-      ),
-      
+      name: "PeoplePay360 Inc.",
+      logo: <GalleryVerticalEndIcon />,
       plan: "Enterprise",
     },
     {
-      name: "PeoplyPay360 Corp.",
-      logo: (
-        <AudioLinesIcon
-        />
-      ),
+      name: "PeoplePay360 Corp.",
+      logo: <AudioLinesIcon />,
       plan: "Startup",
     },
     {
-      name: "Evil Corp.",
-      logo: (
-        <TerminalIcon
-        />
-      ),
-      plan: "Free",
+      name: "Demo Organization",
+      logo: <TerminalIcon />,
+      plan: "Demo",
     },
   ],
+
   navMain: [
+    // ─────────────────────────────────────────────
+    // DASHBOARD
+    // ─────────────────────────────────────────────
     {
-      title: "Playground",
-      url: "#",
-      icon: (
-        <TerminalSquareIcon
-        />
-      ),
+      title: "Dashboard",
+      url: "/dashboard",
+      icon: <LayoutDashboardIcon />,
       isActive: true,
       items: [
         {
-          title: "History",
-          url: "#",
+            title: "Overview",
+            url: "/dashboard",
+          },
+          {
+            title: "Analytics",
+            url: "/dashboard/analytics",
+          },
+          {
+            title: "Reports",
+            url: "/dashboard/reports",
+        }
+      ],
+    },
+
+    // ─────────────────────────────────────────────
+    // EMPLOYEES
+    // ─────────────────────────────────────────────
+    {
+      title: "Employees",
+      url: "/employees",
+      icon: <UsersIcon />,
+      items: [
+        {
+          title: "All Employees",
+          url: "/employees",
         },
         {
-          title: "Starred",
-          url: "#",
+          title: "Departments",
+          url: "/employees/departments",
         },
         {
-          title: "Settings",
-          url: "#",
+          title: "Job Positions",
+          url: "/employees/job-positions",
         },
       ],
     },
+
+    // ─────────────────────────────────────────────
+    // CONTRACTS
+    // ─────────────────────────────────────────────
     {
-      title: "Models",
-      url: "#",
-      icon: (
-        <BotIcon
-        />
-      ),
+      title: "Contracts",
+      url: "/contracts",
+      icon: <FileTextIcon />,
       items: [
         {
-          title: "Genesis",
-          url: "#",
+          title: "All Contracts",
+          url: "/contracts",
         },
         {
-          title: "Explorer",
-          url: "#",
+          title: "Active Contracts",
+          url: "/contracts?status=active",
         },
         {
-          title: "Quantum",
-          url: "#",
+          title: "Expiring Contracts",
+          url: "/contracts?status=expiring",
         },
       ],
     },
+
+    // ─────────────────────────────────────────────
+    // ATTENDANCE
+    // ─────────────────────────────────────────────
     {
-      title: "Documentation",
-      url: "#",
-      icon: (
-        <BookOpenIcon
-        />
-      ),
+      title: "Attendance",
+      url: "/attendance",
+      icon: <Clock3Icon />,
       items: [
         {
-          title: "Introduction",
-          url: "#",
+          title: "Attendance Records",
+          url: "/attendance",
         },
         {
-          title: "Get Started",
-          url: "#",
+          title: "My Attendance",
+          url: "/attendance/me",
         },
         {
-          title: "Tutorials",
-          url: "#",
+          title: "Working Schedules",
+          url: "/attendance/schedules",
         },
         {
-          title: "Changelog",
-          url: "#",
+          title: "Exceptions",
+          url: "/attendance/exceptions",
         },
       ],
     },
+
+    // ─────────────────────────────────────────────
+    // TIME OFF
+    // ─────────────────────────────────────────────
     {
-      title: "Settings",
-      url: "#",
-      icon: (
-        <Settings2Icon
-        />
-      ),
+      title: "Time Off",
+      url: "/time-off",
+      icon: <CalendarDaysIcon />,
       items: [
         {
-          title: "General",
-          url: "#",
+          title: "Requests",
+          url: "/time-off/requests",
         },
         {
-          title: "Team",
-          url: "#",
+          title: "My Time Off",
+          url: "/time-off/me",
         },
         {
-          title: "Billing",
-          url: "#",
+          title: "Allocations",
+          url: "/time-off/allocations",
         },
         {
-          title: "Limits",
-          url: "#",
+          title: "Time Off Types",
+          url: "/time-off/types",
+        },
+      ],
+    },
+
+    // ─────────────────────────────────────────────
+    // PAYROLL
+    // ─────────────────────────────────────────────
+    {
+      title: "Payroll",
+      url: "/payroll",
+      icon: <BanknoteIcon />,
+      items: [
+        {
+          title: "Payruns",
+          url: "/payroll/payruns",
+        },
+        {
+          title: "Payslips",
+          url: "/payroll/payslips",
+        },
+        {
+          title: "Salary Structures",
+          url: "/payroll/salary-structures",
+        },
+        {
+          title: "Salary Rules",
+          url: "/payroll/salary-rules",
+        },
+      ],
+    },
+
+    // ─────────────────────────────────────────────
+    // REPORTS
+    // ─────────────────────────────────────────────
+    {
+      title: "Reports",
+      url: "/reports",
+      icon: <ChartNoAxesCombinedIcon />,
+      items: [
+        {
+          title: "Payroll Overview",
+          url: "/reports/payroll",
+        },
+        {
+          title: "Attendance",
+          url: "/reports/attendance",
+        },
+        {
+          title: "Time Off",
+          url: "/reports/time-off",
+        },
+        {
+          title: "Department Costs",
+          url: "/reports/departments",
+        },
+      ],
+    },
+
+    // ─────────────────────────────────────────────
+    // CONFIGURATION
+    // ─────────────────────────────────────────────
+    {
+      title: "Configuration",
+      url: "/settings",
+      icon: <Settings2Icon />,
+      items: [
+        {
+          title: "Organization",
+          url: "/settings/organization",
+        },
+        {
+          title: "Departments",
+          url: "/settings/departments",
+        },
+        {
+          title: "Job Positions",
+          url: "/settings/job-positions",
+        },
+        {
+          title: "Working Schedules",
+          url: "/settings/working-schedules",
+        },
+        {
+          title: "Time Off Types",
+          url: "/settings/time-off-types",
+        },
+        {
+          title: "Salary Structures",
+          url: "/settings/salary-structures",
+        },
+        {
+          title: "Salary Rules",
+          url: "/settings/salary-rules",
+        },
+      ],
+    },
+
+    // ─────────────────────────────────────────────
+    // ADMIN
+    // ─────────────────────────────────────────────
+    {
+      title: "Administration",
+      url: "/admin",
+      icon: <ShieldCheckIcon />,
+      items: [
+        {
+          title: "Users",
+          url: "/admin/users",
+        },
+        {
+          title: "Roles & Permissions",
+          url: "/admin/roles",
         },
       ],
     },
   ],
+
+  // Useful for your existing NavProjects component
   projects: [
     {
-      name: "Design Engineering",
-      url: "#",
-      icon: (
-        <FrameIcon
-        />
-      ),
+      name: "Employees",
+      url: "/employees",
+      icon: <UserRoundIcon />,
     },
     {
-      name: "Sales & Marketing",
-      url: "#",
-      icon: (
-        <PieChartIcon
-        />
-      ),
+      name: "Attendance",
+      url: "/attendance",
+      icon: <CalendarClockIcon />,
     },
     {
-      name: "Travel",
-      url: "#",
-      icon: (
-        <MapIcon
-        />
-      ),
+      name: "Time Off",
+      url: "/time-off",
+      icon: <ClipboardListIcon />,
+    },
+    {
+      name: "Payroll",
+      url: "/payroll/payruns",
+      icon: <WalletCardsIcon />,
+    },
+    {
+      name: "Payslips",
+      url: "/payroll/payslips",
+      icon: <ReceiptTextIcon />,
     },
   ],
 }
