@@ -6,6 +6,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCan } from "@/hooks/use-permissions";
+import { TimeOffSubNav } from "@/components/time-off/time-off-subnav";
 import {
   Table,
   TableBody,
@@ -41,6 +42,7 @@ import {
   UserCheckIcon,
   FileTextIcon,
   LayersIcon,
+  AlertTriangleIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -53,6 +55,7 @@ type TimeOffRequestItem = {
   startDate: string;
   endDate: string;
   duration: string;
+  allocationId?: string | null;
   reason: string | null;
   status: "draft" | "pending" | "approved" | "refused" | "cancelled";
   refusalReason?: string | null;
@@ -111,11 +114,20 @@ function TimeOffRequestsContent() {
   const [formData, setFormData] = React.useState({
     employeeId: "",
     timeOffTypeId: "",
+    allocationId: "",
     startDate: new Date().toISOString().split("T")[0],
     endDate: new Date().toISOString().split("T")[0],
     duration: "1",
     reason: "",
   });
+
+  // Balance checking state
+  const [balanceInfo, setBalanceInfo] = React.useState<{
+    loading: boolean;
+    requiresAllocation: boolean;
+    remaining: number;
+    allocations: any[];
+  } | null>(null);
 
   const canApprove = can("timeOffRequest", "approve");
   const canRefuse = can("timeOffRequest", "refuse");
@@ -165,6 +177,41 @@ function TimeOffRequestsContent() {
       duration: String(diffDays),
     }));
   };
+
+  // Dynamically fetch employee's balance for selected type and date
+  React.useEffect(() => {
+    if (!isFormOpen) return;
+    const empId = formData.employeeId || employeesList[0]?.id;
+    const typeId = formData.timeOffTypeId || typesList[0]?.id;
+    if (!empId || !typeId) return;
+
+    let isCancelled = false;
+    async function checkBalance() {
+      setBalanceInfo({ loading: true, requiresAllocation: true, remaining: 0, allocations: [] });
+      try {
+        const res = await fetch(`/api/time-off/balances?employeeId=${empId}&timeOffTypeId=${typeId}&date=${formData.startDate}`);
+        const data = await res.json();
+        if (isCancelled) return;
+        if (data.data?.byTypeId?.[typeId]) {
+          const typeBal = data.data.byTypeId[typeId];
+          setBalanceInfo({
+            loading: false,
+            requiresAllocation: typeBal.requiresAllocation,
+            remaining: typeBal.remaining,
+            allocations: typeBal.allocations || [],
+          });
+        }
+      } catch (err) {
+        if (!isCancelled) {
+          setBalanceInfo(null);
+        }
+      }
+    }
+    checkBalance();
+    return () => {
+      isCancelled = true;
+    };
+  }, [isFormOpen, formData.employeeId, formData.timeOffTypeId, formData.startDate, employeesList, typesList]);
 
   const handleApprove = async (id: string, employeeName: string) => {
     if (!canApprove) {
@@ -245,9 +292,12 @@ function TimeOffRequestsContent() {
   const openCreateModal = () => {
     setSelectedRequest(null);
     const todayStr = new Date().toISOString().split("T")[0];
+    const initialEmpId = employeesList[0]?.id || "";
+    const initialTypeId = typesList[0]?.id || "";
     setFormData({
-      employeeId: employeesList[0]?.id || "",
-      timeOffTypeId: typesList[0]?.id || "",
+      employeeId: initialEmpId,
+      timeOffTypeId: initialTypeId,
+      allocationId: "",
       startDate: todayStr,
       endDate: todayStr,
       duration: "1",
@@ -261,6 +311,7 @@ function TimeOffRequestsContent() {
     setFormData({
       employeeId: req.employeeId,
       timeOffTypeId: req.timeOffTypeId,
+      allocationId: req.allocationId || "",
       startDate: req.startDate,
       endDate: req.endDate,
       duration: req.duration,
@@ -304,29 +355,8 @@ function TimeOffRequestsContent() {
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      {/* Time Off Sub-Navigation Header (From Wireframe) */}
-      <div className="flex items-center gap-2 border-b pb-3">
-        <Link href="/time-off">
-          <Button variant="ghost" size="sm" className="text-xs">
-            Dashboard
-          </Button>
-        </Link>
-        <Link href="/time-off/requests">
-          <Button variant="secondary" size="sm" className="text-xs font-semibold">
-            Time offs
-          </Button>
-        </Link>
-        <Link href="/time-off/types">
-          <Button variant="ghost" size="sm" className="text-xs">
-            Time off Types
-          </Button>
-        </Link>
-        <Link href="/time-off/allocations">
-          <Button variant="ghost" size="sm" className="text-xs">
-            Allocations
-          </Button>
-        </Link>
-      </div>
+      {/* Sub-Navigation Tabs */}
+      <TimeOffSubNav />
 
       {employeeFilter && (
         <div className="flex items-center justify-between rounded-lg bg-blue-500/10 border border-blue-500/30 px-4 py-2.5 text-xs text-blue-700 dark:text-blue-300">
@@ -605,6 +635,44 @@ function TimeOffRequestsContent() {
                 </div>
               </div>
 
+              {/* Dynamic Balance Information */}
+              {!selectedRequest && balanceInfo && (
+                <div className={`rounded-lg border p-3 text-xs ${
+                  balanceInfo.requiresAllocation && balanceInfo.remaining < Number(formData.duration)
+                    ? "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-400"
+                    : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                }`}>
+                  {balanceInfo.loading ? (
+                    <span>Verifying leave entitlement balances...</span>
+                  ) : !balanceInfo.requiresAllocation ? (
+                    <div className="flex items-center gap-1.5 font-medium">
+                      <CheckCircle2Icon className="size-4" />
+                      <span>This leave policy does not require an allocation (unlimited entitlement).</span>
+                    </div>
+                  ) : balanceInfo.remaining < Number(formData.duration) ? (
+                    <div className="flex items-start gap-2">
+                      <AlertTriangleIcon className="size-4 shrink-0 mt-0.5 text-rose-600" />
+                      <div>
+                        <span className="font-semibold">Insufficient balance:</span> You have only{" "}
+                        <span className="font-bold">{balanceInfo.remaining} days</span> available as of{" "}
+                        {formData.startDate}, but requested{" "}
+                        <span className="font-bold">{formData.duration} days</span>.
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 font-medium">
+                        <CheckCircle2Icon className="size-4" />
+                        <span>Available balance: {balanceInfo.remaining} days remaining</span>
+                      </div>
+                      <span className="text-[11px] opacity-80 font-mono">
+                        Valid on {formData.startDate}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
                 {/* Start Date */}
                 <div className="space-y-1.5">
@@ -633,17 +701,35 @@ function TimeOffRequestsContent() {
                 </div>
               </div>
 
-              {/* Allocation Used Reference */}
+              {/* Allocation Selection / Assignment */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label>Allocation Used</Label>
-                  <div className="h-9 w-full rounded-md border border-input bg-muted px-3 text-sm flex items-center text-muted-foreground">
-                    {typesList.find((t) => t.id === formData.timeOffTypeId)?.name || "Paid Time Off"} 2026
-                  </div>
+                  <Label htmlFor="allocationId">Allocation Ledger</Label>
+                  {!selectedRequest ? (
+                    <select
+                      id="allocationId"
+                      value={formData.allocationId}
+                      onChange={(e) => setFormData({ ...formData, allocationId: e.target.value })}
+                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                    >
+                      <option value="">Auto-assign best eligible allocation</option>
+                      {(balanceInfo?.allocations || [])
+                        .filter((a: any) => a.isValidForDate && a.remainingAmount > 0)
+                        .map((a: any) => (
+                          <option key={a.id} value={a.id}>
+                            Valid {a.validFrom} to {a.validTo || "indefinite"} ({a.remainingAmount}d rem)
+                          </option>
+                        ))}
+                    </select>
+                  ) : (
+                    <div className="h-9 w-full rounded-md border border-input bg-muted px-3 text-xs flex items-center text-muted-foreground font-mono">
+                      {typesList.find((t) => t.id === formData.timeOffTypeId)?.name || "Allocated Leave"}
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-1.5">
                   <Label>Approver</Label>
-                  <div className="h-9 w-full rounded-md border border-input bg-muted px-3 text-sm flex items-center text-muted-foreground">
+                  <div className="h-9 w-full rounded-md border border-input bg-muted px-3 text-xs flex items-center text-muted-foreground">
                     {selectedRequest ? "Authorized HR / Manager" : "Pending Assignment"}
                   </div>
                 </div>
@@ -654,7 +740,7 @@ function TimeOffRequestsContent() {
                 <Label htmlFor="reason">Reason / Justification</Label>
                 <textarea
                   id="reason"
-                  rows={3}
+                  rows={2}
                   value={formData.reason}
                   onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
                   className="w-full rounded-md border border-input bg-background p-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
@@ -666,7 +752,7 @@ function TimeOffRequestsContent() {
               <div className="flex items-start gap-2.5 rounded-md bg-purple-500/5 border border-purple-500/20 p-3 text-xs text-purple-800 dark:text-purple-300">
                 <InfoIcon className="size-4 shrink-0 mt-0.5 text-purple-600 dark:text-purple-400" />
                 <div>
-                  <span className="font-semibold">Useful note:</span> If the selected type requires allocation, the request should clearly show which balance was consumed.
+                  <span className="font-semibold">Useful note:</span> Approved requests deduct duration from the employee's active leave allocation ledger.
                 </div>
               </div>
 
@@ -676,7 +762,14 @@ function TimeOffRequestsContent() {
                   Close
                 </Button>
                 {!selectedRequest && (
-                  <Button type="submit" disabled={isSubmitting}>
+                  <Button
+                    type="submit"
+                    disabled={
+                      isSubmitting ||
+                      (Boolean(balanceInfo?.requiresAllocation) &&
+                        Number(formData.duration) > (balanceInfo?.remaining ?? 0))
+                    }
+                  >
                     {isSubmitting ? "Submitting..." : "Submit Request"}
                   </Button>
                 )}

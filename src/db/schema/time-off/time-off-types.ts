@@ -5,6 +5,7 @@ import {
   boolean,
   timestamp,
   pgEnum,
+  text,
 } from "drizzle-orm/pg-core";
 
 export const leaveUnitEnum = pgEnum("leave_unit", [
@@ -32,6 +33,7 @@ export const timeOffTypes = pgTable("time_off_types", {
   })
     .notNull()
     .unique(),
+  description: text("description"),
   unit: leaveUnitEnum("unit")
     .default("days")
     .notNull(),

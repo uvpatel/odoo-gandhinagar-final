@@ -72,4 +72,95 @@ describe("Time-Off & Leave Domain Invariants", () => {
       expect(() => weeklyHours(overlapping)).toThrow("Schedule intervals overlap");
     });
   });
+
+  describe("Allocation Lifecycle & Remaining Balance Rules", () => {
+    it("only approved allocations contribute to available leave balance", () => {
+      const allocations = [
+        { id: "1", amount: 20, status: "approved" },
+        { id: "2", amount: 10, status: "pending" },
+        { id: "3", amount: 5, status: "draft" },
+        { id: "4", amount: 15, status: "refused" },
+      ];
+
+      const activeBalance = allocations
+        .filter((a) => a.status === "approved")
+        .reduce((sum, a) => sum + a.amount, 0);
+
+      expect(activeBalance).toBe(20);
+    });
+
+    it("verifies allocation date validity window", () => {
+      const targetDate = "2026-06-15";
+
+      const allocations = [
+        // Valid: 2026 full year
+        { id: "1", validFrom: "2026-01-01", validTo: "2026-12-31", amount: 20, status: "approved" },
+        // Expired in May 2026
+        { id: "2", validFrom: "2026-01-01", validTo: "2026-05-31", amount: 10, status: "approved" },
+        // Future: starts in July 2026
+        { id: "3", validFrom: "2026-07-01", validTo: "2026-12-31", amount: 5, status: "approved" },
+        // Open-ended (null validTo)
+        { id: "4", validFrom: "2026-01-01", validTo: null, amount: 8, status: "approved" },
+      ];
+
+      const validAllocations = allocations.filter((a) => {
+        const isApproved = a.status === "approved";
+        const started = a.validFrom <= targetDate;
+        const notExpired = !a.validTo || a.validTo >= targetDate;
+        return isApproved && started && notExpired;
+      });
+
+      expect(validAllocations.map((a) => a.id)).toEqual(["1", "4"]);
+      const availableAmount = validAllocations.reduce((s, a) => s + a.amount, 0);
+      expect(availableAmount).toBe(28);
+    });
+
+    it("restores remaining balance when an approved request is cancelled", () => {
+      const allocated = 20;
+      let approvedRequests = [
+        { id: "req-1", duration: 3, status: "approved" },
+        { id: "req-2", duration: 5, status: "approved" },
+      ];
+
+      // Initial consumed: 8, remaining: 12
+      let consumed = approvedRequests
+        .filter((r) => r.status === "approved")
+        .reduce((sum, r) => sum + r.duration, 0);
+      expect(allocated - consumed).toBe(12);
+      expect(remainingAllocation(allocated, consumed, 10)).toBe(2);
+
+      // Cancel req-2
+      approvedRequests = approvedRequests.map((r) =>
+        r.id === "req-2" ? { ...r, status: "cancelled" } : r
+      );
+
+      // New consumed: 3, remaining: 17
+      consumed = approvedRequests
+        .filter((r) => r.status === "approved")
+        .reduce((sum, r) => sum + r.duration, 0);
+      expect(allocated - consumed).toBe(17);
+      expect(remainingAllocation(allocated, consumed, 10)).toBe(7);
+    });
+
+    it("payroll leaves calculation respects isPaid flag and status", () => {
+      const leaveRequests = [
+        { id: "1", duration: 3, status: "approved", isPaid: true },
+        { id: "2", duration: 2, status: "approved", isPaid: false },
+        { id: "3", duration: 4, status: "pending", isPaid: true }, // Not approved -> ignored
+        { id: "4", duration: 1, status: "refused", isPaid: true }, // Refused -> ignored
+        { id: "5", duration: 2, status: "approved", isPaid: true },
+      ];
+
+      const approvedLeaves = leaveRequests.filter((l) => l.status === "approved");
+      const paidDays = approvedLeaves
+        .filter((l) => l.isPaid)
+        .reduce((sum, l) => sum + l.duration, 0);
+      const unpaidDays = approvedLeaves
+        .filter((l) => !l.isPaid)
+        .reduce((sum, l) => sum + l.duration, 0);
+
+      expect(paidDays).toBe(5); // req 1 (3) + req 5 (2)
+      expect(unpaidDays).toBe(2); // req 2 (2)
+    });
+  });
 });

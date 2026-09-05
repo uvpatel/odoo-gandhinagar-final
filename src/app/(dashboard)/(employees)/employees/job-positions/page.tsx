@@ -297,7 +297,7 @@ export default function JobPositionsPage() {
                   <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
                     <div className="flex items-center justify-center gap-2">
                       <div className="size-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                      Loading job positions from Neon DB...
+                      Loading job positions from Neon D
                     </div>
                   </TableCell>
                 </TableRow>

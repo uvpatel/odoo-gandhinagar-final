@@ -6,6 +6,7 @@ import Link from "next/link";
 import { IconBrandGithub } from "@tabler/icons-react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import Image from "next/image";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -284,10 +285,12 @@ export function SignupForm({
           </form>
 
           <div className="relative hidden bg-muted md:block">
-            <img
-              src="/placeholder.svg"
+            <Image
+              src="/auth.png"
               alt="Sign up banner"
               className="absolute inset-0 h-full w-full object-cover dark:brightness-[0.2] dark:grayscale"
+               width={100}
+              height={100}
             />
           </div>
         </CardContent>

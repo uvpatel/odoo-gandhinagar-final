@@ -540,7 +540,7 @@ export default function EmployeesPage() {
         <Card className="p-12 text-center">
           <div className="flex flex-col items-center justify-center gap-2">
             <div className="size-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            <span className="text-sm text-muted-foreground">Loading employee records from Neon DB...</span>
+            <span className="text-sm text-muted-foreground">Loading employee records PeoplyPay360...</span>
           </div>
         </Card>
       ) : filteredEmployees.length === 0 ? (
@@ -573,6 +573,7 @@ export default function EmployeesPage() {
                   <TableRow key={emp.id}>
                     <TableCell className="font-mono text-xs font-medium text-primary">
                       {emp.employeeNumber}
+                      
                     </TableCell>
                     <TableCell>
                       <div
@@ -686,6 +687,7 @@ export default function EmployeesPage() {
                     <AvatarFallback>
                       {emp.firstName.charAt(0)}
                       {emp.lastName.charAt(0)}
+                      
                     </AvatarFallback>
                   </Avatar>
                   <div>
@@ -700,6 +702,7 @@ export default function EmployeesPage() {
                   className={`capitalize text-[10px] ${statusColors[emp.status] || ""}`}
                 >
                   {emp.status}
+                  
                 </Badge>
               </CardHeader>
               <CardContent className="space-y-3 pt-0">

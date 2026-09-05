@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
       .values({
         name: body.name.trim(),
         code: body.code.trim().toUpperCase(),
+        description: body.description ? body.description.trim() : null,
         unit: body.unit || "days",
         requiresAllocation: body.requiresAllocation ?? true,
         approvalMode: body.approvalMode || "manager",
@@ -66,6 +67,7 @@ export async function PUT(request: NextRequest) {
       .set({
         name: body.name?.trim(),
         code: body.code?.trim().toUpperCase(),
+        description: body.description !== undefined ? (body.description ? body.description.trim() : null) : undefined,
         unit: body.unit,
         requiresAllocation: body.requiresAllocation,
         approvalMode: body.approvalMode,

@@ -7,6 +7,7 @@ import { type PayslipSummaryItem, type PayslipStatus } from "../../types";
 import { Input } from "@/components/ui/input";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Card,
   CardContent,
@@ -40,13 +41,24 @@ import {
   ReceiptIcon,
   Loader2Icon,
   UserIcon,
+  MailIcon,
+  SendIcon,
+  XIcon,
 } from "lucide-react";
 import { cn } from "cn";
+import { SendPayslipEmailDialog } from "./send-payslip-email-dialog";
+import { BulkSendPayslipsDialog } from "./bulk-send-payslips-dialog";
 
 export function PayslipsListView() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [deptFilter, setDeptFilter] = useState("all");
+
+  // Selection & Emailing State
+  const [selectedSlipIds, setSelectedSlipIds] = useState<Set<string>>(new Set());
+  const [singleEmailSlip, setSingleEmailSlip] = useState<PayslipSummaryItem | null>(null);
+  const [isSingleEmailOpen, setIsSingleEmailOpen] = useState(false);
+  const [isBulkEmailOpen, setIsBulkEmailOpen] = useState(false);
 
   // Fetch departments for filtering
   const { data: deptsData } = useQuery<{ data: Array<{ id: string; name: string }> }>({
@@ -60,7 +72,7 @@ export function PayslipsListView() {
   const departments = deptsData?.data || [];
 
   // Fetch payslips
-  const { data, isLoading, error } = useQuery<{ data: PayslipSummaryItem[] }>({
+  const { data, isLoading, error, refetch } = useQuery<{ data: PayslipSummaryItem[] }>({
     queryKey: ["payslips-list", statusFilter, deptFilter, search],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -77,6 +89,27 @@ export function PayslipsListView() {
   });
 
   const payslips = data?.data || [];
+
+  const toggleSelectSlip = (id: string) => {
+    setSelectedSlipIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedSlipIds(new Set(payslips.map((s) => s.id)));
+    } else {
+      setSelectedSlipIds(new Set());
+    }
+  };
+
+  const selectedPayslips = useMemo(() => {
+    return payslips.filter((s) => selectedSlipIds.has(s.id));
+  }, [payslips, selectedSlipIds]);
 
   // Aggregated KPIs
   const stats = useMemo(() => {
@@ -126,19 +159,41 @@ export function PayslipsListView() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Payslips Directory</h1>
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-2xl font-bold tracking-tight">Payslips Directory</h1>
+            <Badge
+              variant="outline"
+              className="gap-1.5 border-emerald-500/40 bg-emerald-50/50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300 text-[11px] font-medium"
+            >
+              <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Resend Active</span>
+            </Badge>
+          </div>
           <p className="text-sm text-muted-foreground mt-1">
-            Browse, inspect itemized computation rules, and generate print-ready salary slips.
+            Browse, inspect itemized computation rules, and dispatch salary slips via Resend email.
           </p>
         </div>
 
-        <Link
-          href="/payroll/payslips/me"
-          className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5 self-start sm:self-auto")}
-        >
-          <UserIcon className="size-3.5" />
-          <span>My Personal Payslips</span>
-        </Link>
+        <div className="flex items-center gap-2">
+          {selectedSlipIds.size > 0 && (
+            <Button
+              size="sm"
+              onClick={() => setIsBulkEmailOpen(true)}
+              className="gap-1.5 shadow-xs"
+            >
+              <MailIcon className="size-3.5" />
+              <span>Email Selected ({selectedSlipIds.size})</span>
+            </Button>
+          )}
+
+          <Link
+            href="/payroll/payslips/me"
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5 self-start sm:self-auto")}
+          >
+            <UserIcon className="size-3.5" />
+            <span>My Personal Payslips</span>
+          </Link>
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -202,6 +257,40 @@ export function PayslipsListView() {
         </Card>
       </div>
 
+      {/* Batch Actions Bar (when items selected) */}
+      {selectedSlipIds.size > 0 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 bg-primary/5 border border-primary/20 rounded-lg animate-in fade-in slide-in-from-top-1 duration-150">
+          <div className="flex items-center gap-2 text-xs">
+            <Badge variant="default" className="font-mono">
+              {selectedSlipIds.size} Selected
+            </Badge>
+            <span className="text-muted-foreground">
+              of {payslips.length} payslips in directory
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setSelectedSlipIds(new Set())}
+              className="h-8 text-xs gap-1"
+            >
+              <XIcon className="size-3.5" />
+              <span>Clear</span>
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => setIsBulkEmailOpen(true)}
+              className="h-8 text-xs gap-1.5 shadow-xs"
+            >
+              <MailIcon className="size-3.5" />
+              <span>Send {selectedSlipIds.size} Payslips via Email</span>
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Main Table Card */}
       <Card className="shadow-xs">
         <CardHeader className="pb-3">
@@ -209,7 +298,7 @@ export function PayslipsListView() {
             <div>
               <CardTitle className="text-lg font-semibold">Issued Payslips</CardTitle>
               <CardDescription className="text-xs">
-                View employee compensation breakdown and download formal PDFs.
+                Select slips to email in bulk, or click the mail icon on any row to send directly.
               </CardDescription>
             </div>
 
@@ -283,6 +372,13 @@ export function PayslipsListView() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10 pl-4">
+                      <Checkbox
+                        checked={payslips.length > 0 && selectedSlipIds.size === payslips.length}
+                        onCheckedChange={(checked) => handleSelectAll(Boolean(checked))}
+                        aria-label="Select all payslips"
+                      />
+                    </TableHead>
                     <TableHead>Slip Ref</TableHead>
                     <TableHead>Employee</TableHead>
                     <TableHead>Department / Role</TableHead>
@@ -291,12 +387,23 @@ export function PayslipsListView() {
                     <TableHead className="text-right">Deductions</TableHead>
                     <TableHead className="text-right">Net Pay</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead className="text-right pr-4">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {payslips.map((slip) => (
-                    <TableRow key={slip.id} className="hover:bg-muted/30">
+                    <TableRow
+                      key={slip.id}
+                      className={cn("hover:bg-muted/30", selectedSlipIds.has(slip.id) && "bg-primary/5")}
+                    >
+                      <TableCell className="w-10 pl-4">
+                        <Checkbox
+                          checked={selectedSlipIds.has(slip.id)}
+                          onCheckedChange={() => toggleSelectSlip(slip.id)}
+                          aria-label={`Select payslip ${slip.payslipNumber}`}
+                        />
+                      </TableCell>
+
                       <TableCell>
                         <Link
                           href={`/payroll/payslips/${slip.id}`}
@@ -311,9 +418,21 @@ export function PayslipsListView() {
                           <span className="font-medium text-foreground text-xs">
                             {slip.employeeName}
                           </span>
-                          <span className="font-mono text-[11px] text-muted-foreground">
-                            {slip.employeeNumber}
-                          </span>
+                          <div className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
+                            <span>{slip.employeeNumber}</span>
+                            {slip.workEmail ? (
+                              <span
+                                className="text-[10px] text-muted-foreground/80 lowercase truncate max-w-[130px]"
+                                title={slip.workEmail}
+                              >
+                                &bull; {slip.workEmail}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-amber-600 dark:text-amber-400">
+                                &bull; No Email
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </TableCell>
 
@@ -344,8 +463,21 @@ export function PayslipsListView() {
                         {getStatusBadge(slip.status)}
                       </TableCell>
 
-                      <TableCell className="text-right">
+                      <TableCell className="text-right pr-4">
                         <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            onClick={() => {
+                              setSingleEmailSlip(slip);
+                              setIsSingleEmailOpen(true);
+                            }}
+                            className="text-muted-foreground hover:text-primary hover:bg-primary/10"
+                            title={slip.workEmail ? `Email payslip to ${slip.workEmail}` : "Send Payslip by Email"}
+                          >
+                            <MailIcon className="size-3.5" />
+                          </Button>
+
                           <a
                             href={`/api/payroll/payslips/${slip.id}/pdf`}
                             target="_blank"
@@ -373,6 +505,25 @@ export function PayslipsListView() {
           )}
         </CardContent>
       </Card>
+
+      {/* Individual Email Dialog */}
+      <SendPayslipEmailDialog
+        payslip={singleEmailSlip}
+        open={isSingleEmailOpen}
+        onOpenChange={setIsSingleEmailOpen}
+        onSuccess={() => refetch()}
+      />
+
+      {/* Bulk Email Dialog */}
+      <BulkSendPayslipsDialog
+        selectedPayslips={selectedPayslips}
+        open={isBulkEmailOpen}
+        onOpenChange={setIsBulkEmailOpen}
+        onSuccess={() => {
+          setSelectedSlipIds(new Set());
+          refetch();
+        }}
+      />
     </div>
   );
 }

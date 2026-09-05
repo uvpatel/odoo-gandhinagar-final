@@ -65,17 +65,21 @@ export async function GET(request: NextRequest) {
       takenMap.set(req.allocationId || "", Number(req.durationSum) || 0);
     });
 
+    const today = new Date().toISOString().slice(0, 10);
     const dataWithTaken = allocations.map((alloc) => {
       const taken = takenMap.get(alloc.id) || 0;
       const allocated = Number(alloc.allocatedAmount) || 0;
-      const today = new Date().toISOString().slice(0, 10);
-      const remaining = alloc.status === "approved" && alloc.validFrom <= today && (!alloc.validTo || alloc.validTo >= today) ? Math.max(0, allocated - taken) : 0;
+      const isExpired = alloc.validTo ? alloc.validTo < today : false;
+      const isActiveWindow = alloc.validFrom <= today && (!alloc.validTo || alloc.validTo >= today);
+      const remaining = alloc.status === "approved" && !isExpired ? Math.max(0, allocated - taken) : 0;
 
       return {
         ...alloc,
-        allocated: allocated,
-        taken: taken,
-        remaining: remaining,
+        allocated,
+        taken,
+        remaining,
+        isExpired,
+        isActiveWindow,
       };
     });
 

@@ -1,8 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/index";
-import { contracts, employees, departments, jobPositions, workingSchedules, salaryStructures } from "@/db/schema";
-import { requirePermission, AuthorizationError, getAuthSession, getCurrentEmployee } from "@/lib/auth/authorization";
-import { eq, sql, and, or, isNull } from "drizzle-orm";
+import {
+  contracts,
+  employees,
+  departments,
+  jobPositions,
+  workingSchedules,
+  salaryStructures,
+  payslips,
+} from "@/db/schema";
+import {
+  requirePermission,
+  AuthorizationError,
+  getAuthSession,
+  getCurrentEmployee,
+} from "@/lib/auth/authorization";
+import { eq, sql } from "drizzle-orm";
+import { checkContractOverlap } from "@/server/services/payroll/contract-resolver";
 
 export async function GET(
   request: NextRequest,
@@ -55,9 +69,15 @@ export async function GET(
     }
 
     // IDOR protection: if ordinary employee, can only view own contract
-    if (userRole === "employee" || (!["admin", "hr_manager", "payroll_manager", "payroll_user"].includes(userRole || ""))) {
+    if (
+      userRole === "employee" ||
+      !["admin", "hr_manager", "payroll_manager", "payroll_user"].includes(userRole || "")
+    ) {
       if (!currentEmp || currentEmp.id !== contract.employeeId) {
-        return NextResponse.json({ error: "Forbidden: You cannot view other employees' contracts" }, { status: 403 });
+        return NextResponse.json(
+          { error: "Forbidden: You cannot view other employees' contracts" },
+          { status: 403 }
+        );
       }
     }
 
@@ -91,23 +111,27 @@ export async function PUT(
       return NextResponse.json({ error: "Contract end date cannot precede start date" }, { status: 400 });
     }
 
-    if (effectiveStatus === "active") {
-      const overlapping = await db
-        .select({ id: contracts.id, contractNumber: contracts.contractNumber })
-        .from(contracts)
-        .where(
-          and(
-            eq(contracts.employeeId, effectiveEmployeeId),
-            eq(contracts.status, "active"),
-            sql`${contracts.id} <> ${contractId}`,
-            sql`${contracts.startDate} <= ${effectiveEndDate || "9999-12-31"}`,
-            or(isNull(contracts.endDate), sql`${contracts.endDate} >= ${effectiveStartDate}`)
-          )
-        );
+    if (body.wage !== undefined) {
+      const wageNum = Number(body.wage);
+      if (isNaN(wageNum) || wageNum <= 0) {
+        return NextResponse.json({ error: "Wage must be a valid positive number" }, { status: 400 });
+      }
+    }
 
-      if (overlapping.length > 0) {
+    // Overlap prevention on update
+    if (effectiveStatus !== "cancelled") {
+      const overlapCheck = await checkContractOverlap({
+        employeeId: effectiveEmployeeId,
+        startDate: effectiveStartDate,
+        endDate: effectiveEndDate || null,
+        excludeContractId: contractId,
+      });
+
+      if (overlapCheck.hasOverlap) {
         return NextResponse.json(
-          { error: `An active contract (${overlapping[0].contractNumber}) already overlaps this date range for this employee.` },
+          {
+            error: overlapCheck.message || "Updated contract dates overlap with an existing contract for this employee.",
+          },
           { status: 409 }
         );
       }
@@ -116,15 +140,15 @@ export async function PUT(
     const [updated] = await db
       .update(contracts)
       .set({
-        contractNumber: body.contractNumber?.trim(),
+        contractNumber: body.contractNumber ? body.contractNumber.trim() : undefined,
         employeeId: body.employeeId !== undefined ? body.employeeId : undefined,
         startDate: body.startDate !== undefined ? body.startDate : undefined,
-        endDate: body.endDate !== undefined ? body.endDate : undefined,
-        departmentId: body.departmentId !== undefined ? body.departmentId : undefined,
-        jobPositionId: body.jobPositionId !== undefined ? body.jobPositionId : undefined,
-        workingScheduleId: body.workingScheduleId !== undefined ? body.workingScheduleId : undefined,
-        salaryStructureId: body.salaryStructureId !== undefined ? body.salaryStructureId : undefined,
-        wage: body.wage !== undefined ? String(body.wage) : undefined,
+        endDate: body.endDate !== undefined ? (body.endDate || null) : undefined,
+        departmentId: body.departmentId !== undefined ? (body.departmentId || null) : undefined,
+        jobPositionId: body.jobPositionId !== undefined ? (body.jobPositionId || null) : undefined,
+        workingScheduleId: body.workingScheduleId !== undefined ? (body.workingScheduleId || null) : undefined,
+        salaryStructureId: body.salaryStructureId !== undefined ? (body.salaryStructureId || null) : undefined,
+        wage: body.wage !== undefined ? String(Number(body.wage)) : undefined,
         currency: body.currency !== undefined ? body.currency : undefined,
         status: body.status !== undefined ? body.status : undefined,
         updatedAt: new Date(),
@@ -150,6 +174,22 @@ export async function DELETE(
     const [existing] = await db.select().from(contracts).where(eq(contracts.id, contractId)).limit(1);
     if (!existing) {
       return NextResponse.json({ error: "Contract not found" }, { status: 404 });
+    }
+
+    // Safety check: Prevent deleting historical contracts that are tied to existing payslips
+    const [linkedPayslip] = await db
+      .select({ id: payslips.id, payslipNumber: payslips.payslipNumber })
+      .from(payslips)
+      .where(eq(payslips.contractId, contractId))
+      .limit(1);
+
+    if (linkedPayslip) {
+      return NextResponse.json(
+        {
+          error: `Cannot delete contract because it is referenced by payroll records (Payslip ${linkedPayslip.payslipNumber}). Historical contracts must be preserved for audit compliance. Change its status to Expired or Terminated instead.`,
+        },
+        { status: 409 }
+      );
     }
 
     await db.delete(contracts).where(eq(contracts.id, contractId));

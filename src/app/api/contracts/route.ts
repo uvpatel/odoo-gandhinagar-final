@@ -1,8 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/index";
-import { contracts, employees, departments, jobPositions, workingSchedules, salaryStructures } from "@/db/schema";
-import { requirePermission, AuthorizationError, getAuthSession, getCurrentEmployee } from "@/lib/auth/authorization";
-import { eq, sql, desc, ilike, and, or, isNull } from "drizzle-orm";
+import {
+  contracts,
+  employees,
+  departments,
+  jobPositions,
+  workingSchedules,
+  salaryStructures,
+  payslips,
+} from "@/db/schema";
+import {
+  requirePermission,
+  AuthorizationError,
+  getAuthSession,
+  getCurrentEmployee,
+} from "@/lib/auth/authorization";
+import { eq, sql, desc, ilike, and, or, gte, lte } from "drizzle-orm";
+import { checkContractOverlap } from "@/server/services/payroll/contract-resolver";
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,7 +27,10 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const employeeId = searchParams.get("employeeId");
+    const departmentId = searchParams.get("departmentId");
     const status = searchParams.get("status");
+    const startDateFrom = searchParams.get("startDateFrom");
+    const startDateTo = searchParams.get("startDateTo");
     const q = searchParams.get("q");
 
     const userRole = (session.user as { role?: string })?.role;
@@ -21,8 +38,11 @@ export async function GET(request: NextRequest) {
 
     const conditions = [];
 
-    // If regular employee role, restrict to their own contracts unless they have general contract read permission
-    if (userRole === "employee" || (!["admin", "hr_manager", "payroll_manager", "payroll_user"].includes(userRole || ""))) {
+    // If regular employee role, restrict to their own contracts
+    if (
+      userRole === "employee" ||
+      !["admin", "hr_manager", "payroll_manager", "payroll_user"].includes(userRole || "")
+    ) {
       if (currentEmp) {
         conditions.push(eq(contracts.employeeId, currentEmp.id));
       } else {
@@ -32,8 +52,20 @@ export async function GET(request: NextRequest) {
       conditions.push(eq(contracts.employeeId, employeeId));
     }
 
+    if (departmentId && departmentId !== "all") {
+      conditions.push(eq(contracts.departmentId, departmentId));
+    }
+
     if (status && status !== "all") {
       conditions.push(eq(contracts.status, status as any));
+    }
+
+    if (startDateFrom) {
+      conditions.push(gte(contracts.startDate, startDateFrom));
+    }
+
+    if (startDateTo) {
+      conditions.push(lte(contracts.startDate, startDateTo));
     }
 
     if (q) {
@@ -42,7 +74,8 @@ export async function GET(request: NextRequest) {
         or(
           ilike(contracts.contractNumber, search),
           ilike(employees.firstName, search),
-          ilike(employees.lastName, search)
+          ilike(employees.lastName, search),
+          ilike(employees.employeeNumber, search)
         )
       );
     }
@@ -77,7 +110,7 @@ export async function GET(request: NextRequest) {
       .leftJoin(workingSchedules, eq(contracts.workingScheduleId, workingSchedules.id))
       .leftJoin(salaryStructures, eq(contracts.salaryStructureId, salaryStructures.id))
       .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(desc(contracts.createdAt));
+      .orderBy(desc(contracts.startDate), desc(contracts.createdAt));
 
     return NextResponse.json({ data });
   } catch (error: any) {
@@ -96,7 +129,15 @@ export async function POST(request: NextRequest) {
 
     if (!body.employeeId || !body.startDate || body.wage === undefined) {
       return NextResponse.json(
-        { error: "Employee, start date, and wage are required" },
+        { error: "Employee, start date, and wage are required terms" },
+        { status: 400 }
+      );
+    }
+
+    const wageNum = Number(body.wage);
+    if (isNaN(wageNum) || wageNum <= 0) {
+      return NextResponse.json(
+        { error: "Wage must be a valid positive number" },
         { status: 400 }
       );
     }
@@ -108,31 +149,39 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // If setting to active, prevent overlapping active contracts for this employee
-    if ((body.status || "draft") === "active") {
-      const overlapping = await db
-        .select({ id: contracts.id, contractNumber: contracts.contractNumber })
-        .from(contracts)
-        .where(
-          and(
-            eq(contracts.employeeId, body.employeeId),
-            eq(contracts.status, "active"),
-            sql`${contracts.startDate} <= ${body.endDate || "9999-12-31"}`,
-            or(isNull(contracts.endDate), sql`${contracts.endDate} >= ${body.startDate}`)
-          )
-        );
+    // Verify employee exists
+    const [emp] = await db
+      .select({ id: employees.id, firstName: employees.firstName, lastName: employees.lastName })
+      .from(employees)
+      .where(eq(employees.id, body.employeeId))
+      .limit(1);
 
-      if (overlapping.length > 0) {
+    if (!emp) {
+      return NextResponse.json(
+        { error: "Selected employee not found in database" },
+        { status: 400 }
+      );
+    }
+
+    // Overlap prevention (Server-side validation)
+    if ((body.status || "draft") !== "cancelled") {
+      const overlapCheck = await checkContractOverlap({
+        employeeId: body.employeeId,
+        startDate: body.startDate,
+        endDate: body.endDate || null,
+      });
+
+      if (overlapCheck.hasOverlap) {
         return NextResponse.json(
           {
-            error: `An active contract (${overlapping[0].contractNumber}) already overlaps this date range for this employee. Terminate or adjust dates of existing contracts first.`,
+            error: overlapCheck.message || "Contract dates overlap with an existing contract for this employee.",
           },
           { status: 409 }
         );
       }
     }
 
-    // Generate contract number if not provided (e.g. CON/2026/001)
+    // Auto-generate reference number if not provided
     let contractNumber = body.contractNumber?.trim();
     if (!contractNumber) {
       const year = new Date().getFullYear();
@@ -140,7 +189,7 @@ export async function POST(request: NextRequest) {
         .select({ count: sql<number>`count(*)::int` })
         .from(contracts);
       const nextNum = (countResult?.count || 0) + 1;
-      contractNumber = `CON/${year}/${String(nextNum).padStart(3, "0")}`;
+      contractNumber = `CON-${year}-${String(nextNum).padStart(4, "0")}`;
     }
 
     const [newContract] = await db
@@ -154,7 +203,7 @@ export async function POST(request: NextRequest) {
         jobPositionId: body.jobPositionId || null,
         workingScheduleId: body.workingScheduleId || null,
         salaryStructureId: body.salaryStructureId || null,
-        wage: String(body.wage),
+        wage: String(wageNum),
         currency: body.currency || "INR",
         status: body.status || "draft",
       })
@@ -196,24 +245,29 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    if (effectiveStatus === "active") {
-      const overlapping = await db
-        .select({ id: contracts.id, contractNumber: contracts.contractNumber })
-        .from(contracts)
-        .where(
-          and(
-            eq(contracts.employeeId, effectiveEmployeeId),
-            eq(contracts.status, "active"),
-            sql`${contracts.id} <> ${body.id}`,
-            sql`${contracts.startDate} <= ${effectiveEndDate || "9999-12-31"}`,
-            or(isNull(contracts.endDate), sql`${contracts.endDate} >= ${effectiveStartDate}`)
-          )
+    if (body.wage !== undefined) {
+      const wageNum = Number(body.wage);
+      if (isNaN(wageNum) || wageNum <= 0) {
+        return NextResponse.json(
+          { error: "Wage must be a valid positive number" },
+          { status: 400 }
         );
+      }
+    }
 
-      if (overlapping.length > 0) {
+    // Overlap prevention on update
+    if (effectiveStatus !== "cancelled") {
+      const overlapCheck = await checkContractOverlap({
+        employeeId: effectiveEmployeeId,
+        startDate: effectiveStartDate,
+        endDate: effectiveEndDate || null,
+        excludeContractId: body.id,
+      });
+
+      if (overlapCheck.hasOverlap) {
         return NextResponse.json(
           {
-            error: `An active contract (${overlapping[0].contractNumber}) already overlaps this date range for this employee.`,
+            error: overlapCheck.message || "Updated contract dates overlap with an existing contract for this employee.",
           },
           { status: 409 }
         );
@@ -223,15 +277,15 @@ export async function PUT(request: NextRequest) {
     const [updatedContract] = await db
       .update(contracts)
       .set({
-        contractNumber: body.contractNumber?.trim(),
+        contractNumber: body.contractNumber ? body.contractNumber.trim() : undefined,
         employeeId: body.employeeId !== undefined ? body.employeeId : undefined,
         startDate: body.startDate !== undefined ? body.startDate : undefined,
-        endDate: body.endDate !== undefined ? body.endDate : undefined,
-        departmentId: body.departmentId !== undefined ? body.departmentId : undefined,
-        jobPositionId: body.jobPositionId !== undefined ? body.jobPositionId : undefined,
-        workingScheduleId: body.workingScheduleId !== undefined ? body.workingScheduleId : undefined,
-        salaryStructureId: body.salaryStructureId !== undefined ? body.salaryStructureId : undefined,
-        wage: body.wage !== undefined ? String(body.wage) : undefined,
+        endDate: body.endDate !== undefined ? (body.endDate || null) : undefined,
+        departmentId: body.departmentId !== undefined ? (body.departmentId || null) : undefined,
+        jobPositionId: body.jobPositionId !== undefined ? (body.jobPositionId || null) : undefined,
+        workingScheduleId: body.workingScheduleId !== undefined ? (body.workingScheduleId || null) : undefined,
+        salaryStructureId: body.salaryStructureId !== undefined ? (body.salaryStructureId || null) : undefined,
+        wage: body.wage !== undefined ? String(Number(body.wage)) : undefined,
         currency: body.currency !== undefined ? body.currency : undefined,
         status: body.status !== undefined ? body.status : undefined,
         updatedAt: new Date(),
@@ -259,6 +313,22 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Contract ID is required" }, { status: 400 });
     }
 
+    // Safety check: Prevent deleting historical contracts that are tied to existing payslips
+    const [linkedPayslip] = await db
+      .select({ id: payslips.id, payslipNumber: payslips.payslipNumber })
+      .from(payslips)
+      .where(eq(payslips.contractId, id))
+      .limit(1);
+
+    if (linkedPayslip) {
+      return NextResponse.json(
+        {
+          error: `Cannot delete contract because it is referenced by payroll records (Payslip ${linkedPayslip.payslipNumber}). Historical contracts with payroll records must be preserved for auditability. Change the contract status to Expired or Terminated instead.`,
+        },
+        { status: 409 }
+      );
+    }
+
     await db.delete(contracts).where(eq(contracts.id, id));
     return NextResponse.json({ message: "Contract deleted successfully" });
   } catch (error: any) {
@@ -269,4 +339,3 @@ export async function DELETE(request: NextRequest) {
     );
   }
 }
-

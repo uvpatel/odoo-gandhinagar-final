@@ -30,10 +30,165 @@ import { validatePayrollEmployee } from "@/server/services/payroll/payroll-valid
 import { getAttendanceByEmployeeAndPeriod } from "@/db/queries/attendance";
 import { getApprovedLeaveForPeriod } from "@/db/queries/time-off";
 import { getSalaryStructureById } from "@/db/queries/payroll";
+import {
+  getApplicableContract,
+  resolveContractInMemory,
+} from "@/server/services/payroll/contract-resolver";
 import { generatePayslipPdf } from "@/server/services/payroll/pdf-generator";
 export { generatePayslipPdf } from "@/server/services/payroll/pdf-generator";
 
 const resend = new Resend(process.env.RESEND_API_KEY || "re_dummy");
+
+export function getFromEmail(): string {
+  return (
+    process.env.RESEND_FROM_EMAIL ||
+    process.env.EMAIL_FROM ||
+    "PeoplePay360 <onboarding@resend.dev>"
+  );
+}
+
+export function generatePayslipEmailHtml(
+  slip: {
+    payslipNumber: string;
+    employeeName: string;
+    employeeNumber?: string;
+    departmentName?: string | null;
+    jobTitle?: string | null;
+    periodStart: string;
+    periodEnd: string;
+    basicAmount?: number;
+    grossAmount: number;
+    deductionAmount: number;
+    netAmount: number;
+  },
+  customNote?: string
+): string {
+  const formattedGross = Number(slip.grossAmount).toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  const formattedDeductions = Number(slip.deductionAmount).toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  const formattedNet = Number(slip.netAmount).toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payslip ${slip.payslipNumber}</title>
+</head>
+<body style="margin: 0; padding: 24px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b;">
+  <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" style="max-width: 600px; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1); border: 1px solid #e2e8f0;">
+          <!-- Header Banner -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); padding: 28px 32px; color: #ffffff;">
+              <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td>
+                    <h1 style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.025em; color: #ffffff;">PeoplePay360</h1>
+                    <p style="margin: 4px 0 0 0; font-size: 13px; color: #bfdbfe; font-weight: 400;">Enterprise Payroll Management</p>
+                  </td>
+                  <td align="right" valign="top">
+                    <span style="display: inline-block; background-color: rgba(255, 255, 255, 0.2); border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 6px; padding: 4px 10px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #ffffff;">
+                      Confidential
+                    </span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Body Content -->
+          <tr>
+            <td style="padding: 32px;">
+              <p style="margin: 0 0 16px 0; font-size: 16px; line-height: 24px; color: #0f172a;">
+                Dear <strong>${slip.employeeName}</strong>${slip.employeeNumber ? ` (${slip.employeeNumber})` : ""},
+              </p>
+              <p style="margin: 0 0 20px 0; font-size: 14px; line-height: 22px; color: #475569;">
+                Your salary slip for pay period <strong>${slip.periodStart}</strong> to <strong>${slip.periodEnd}</strong> has been issued and processed. Please find below the summary breakdown and your official itemized PDF document attached.
+              </p>
+
+              ${customNote ? `
+              <div style="background-color: #eff6ff; border-left: 4px solid #3b82f6; padding: 12px 16px; margin-bottom: 24px; border-radius: 4px;">
+                <p style="margin: 0; font-size: 13px; font-style: italic; color: #1e40af;">
+                  ${customNote}
+                </p>
+              </div>
+              ` : ""}
+
+              <!-- Summary Card -->
+              <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 24px; font-size: 13px;">
+                <tr>
+                  <td style="padding: 12px 16px; border-bottom: 1px solid #e2e8f0; color: #64748b; width: 45%;">Payslip Reference</td>
+                  <td style="padding: 12px 16px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; font-family: monospace; color: #0f172a;">${slip.payslipNumber}</td>
+                </tr>
+                ${slip.departmentName ? `
+                <tr>
+                  <td style="padding: 10px 16px; border-bottom: 1px solid #e2e8f0; color: #64748b;">Department</td>
+                  <td style="padding: 10px 16px; border-bottom: 1px solid #e2e8f0; text-align: right; color: #334155;">${slip.departmentName}</td>
+                </tr>
+                ` : ""}
+                <tr>
+                  <td style="padding: 10px 16px; border-bottom: 1px solid #e2e8f0; color: #64748b;">Gross Earnings</td>
+                  <td style="padding: 10px 16px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #0f172a;">₹${formattedGross}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px 16px; border-bottom: 1px solid #e2e8f0; color: #64748b;">Total Deductions</td>
+                  <td style="padding: 10px 16px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #dc2626;">-₹${formattedDeductions}</td>
+                </tr>
+                <tr style="background-color: #f0fdf4;">
+                  <td style="padding: 14px 16px; font-size: 15px; font-weight: 700; color: #166534;">Net Take-Home Salary</td>
+                  <td style="padding: 14px 16px; text-align: right; font-size: 17px; font-weight: 800; color: #15803d; font-family: monospace;">₹${formattedNet}</td>
+                </tr>
+              </table>
+
+              <!-- Attachment Callout -->
+              <div style="background-color: #f1f5f9; border-radius: 8px; padding: 14px 16px; margin-bottom: 24px;">
+                <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td width="32" valign="middle">
+                      <span style="font-size: 20px;">📎</span>
+                    </td>
+                    <td valign="middle" style="font-size: 13px; color: #334155;">
+                      <strong>PDF Attachment:</strong> <code style="font-size: 12px; background-color: #e2e8f0; padding: 2px 6px; border-radius: 4px;">payslip-${slip.payslipNumber}.pdf</code>
+                      <br><span style="font-size: 11px; color: #64748b;">Includes full itemized breakdown of base salary, allowances, statutory deductions, and tax compliance.</span>
+                    </td>
+                  </tr>
+                </table>
+              </div>
+
+              <p style="margin: 0; font-size: 12px; line-height: 18px; color: #94a3b8;">
+                If you have any questions regarding your salary computation or deductions, please reach out to your HR/Payroll department or access your PeoplePay360 Employee Self-Service portal.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 20px 32px; text-align: center;">
+              <p style="margin: 0; font-size: 11px; color: #94a3b8;">
+                &copy; ${new Date().getFullYear()} PeoplePay360 Inc. This is a computer-generated notification sent via Resend API. Please do not reply directly to this automated email.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `.trim();
+}
 
 // ============================================================================
 // 1. ELIGIBLE EMPLOYEES (WIZARD STEP 2)
@@ -68,8 +223,8 @@ export async function getEligibleEmployeesForPeriod(
 
   if (activeEmployees.length === 0) return [];
 
-  // Fetch all active contracts overlapping this period
-  const activeContracts = await database
+  // Fetch all non-cancelled contracts for active employees
+  const candidateContracts = await database
     .select({
       id: contracts.id,
       employeeId: contracts.employeeId,
@@ -85,14 +240,16 @@ export async function getEligibleEmployeesForPeriod(
     .leftJoin(salaryStructures, eq(contracts.salaryStructureId, salaryStructures.id))
     .where(
       and(
-        eq(contracts.status, "active"),
-        sql`${contracts.startDate} <= ${periodStart}`,
-        or(isNull(contracts.endDate), sql`${contracts.endDate} >= ${periodEnd}`)
+        sql`${contracts.status} <> 'cancelled'`,
+        inArray(
+          contracts.employeeId,
+          activeEmployees.map((e) => e.id)
+        )
       )
     );
 
-  const contractMap = new Map<string, typeof activeContracts>();
-  for (const c of activeContracts) {
+  const contractMap = new Map<string, typeof candidateContracts>();
+  for (const c of candidateContracts) {
     const list = contractMap.get(c.employeeId) || [];
     list.push(c);
     contractMap.set(c.employeeId, list);
@@ -105,7 +262,13 @@ export async function getEligibleEmployeesForPeriod(
   const result: EligibleEmployee[] = activeEmployees.map((emp) => {
     const empContracts = contractMap.get(emp.id) || [];
 
-    if (empContracts.length === 0) {
+    // Use centralized, date-aware contract resolution logic
+    const resolution = resolveContractInMemory(empContracts, emp.id, {
+      periodStart,
+      periodEnd,
+    });
+
+    if (resolution.status === "ERROR" || resolution.status === "CONFLICT") {
       return {
         id: emp.id,
         employeeNumber: emp.employeeNumber,
@@ -121,31 +284,11 @@ export async function getEligibleEmployeesForPeriod(
         bankName: emp.bankName,
         contract: null,
         eligibility: "ineligible",
-        warningMessage: "No active employment contract overlapping this period",
+        warningMessage: resolution.message || "No applicable contract for this payroll period",
       };
     }
 
-    if (empContracts.length > 1) {
-      return {
-        id: emp.id,
-        employeeNumber: emp.employeeNumber,
-        firstName: emp.firstName,
-        lastName: emp.lastName,
-        fullName: emp.fullName,
-        workEmail: emp.workEmail,
-        departmentId: emp.departmentId,
-        departmentName: emp.departmentName,
-        jobPositionId: emp.jobPositionId,
-        jobTitle: emp.jobTitle,
-        bankAccountNumber: emp.bankAccountNumber,
-        bankName: emp.bankName,
-        contract: null,
-        eligibility: "ineligible",
-        warningMessage: `Multiple conflicting active contracts found (${empContracts.length})`,
-      };
-    }
-
-    const c = empContracts[0];
+    const c = resolution.contract;
     const wageNum = Number(c.wage || 0);
 
     let eligibility: "eligible" | "warning" | "ineligible" = "eligible";
@@ -163,7 +306,7 @@ export async function getEligibleEmployeesForPeriod(
       c.salaryStructureId !== targetStructureId
     ) {
       eligibility = "warning";
-      warningMessage = `Contract specifies structure '${c.salaryStructureName}', different from payrun structure`;
+      warningMessage = `Contract specifies structure, different from payrun structure`;
     }
 
     if (targetStructureId && c.salaryStructureId && c.salaryStructureId !== targetStructureId) {
@@ -174,6 +317,9 @@ export async function getEligibleEmployeesForPeriod(
       eligibility = "ineligible";
       warningMessage = "An overlapping payslip already exists";
     }
+
+    const matchedMeta = empContracts.find((x) => x.id === c.id);
+
     return {
       ...emp,
       contract: {
@@ -184,7 +330,7 @@ export async function getEligibleEmployeesForPeriod(
         endDate: c.endDate,
         status: c.status,
         salaryStructureId: c.salaryStructureId,
-        salaryStructureName: c.salaryStructureName,
+        salaryStructureName: matchedMeta?.salaryStructureName || null,
       },
       eligibility,
       warningMessage,
@@ -210,7 +356,11 @@ export async function createPayrunTransaction(
     const eligible = await getEligibleEmployeesForPeriod(input.periodStart, input.periodEnd, input.salaryStructureId, tx);
     const selected = input.employeeIds.map((id) => {
       const employee = eligible.find((e) => e.id === id);
-      if (!employee?.contract || employee.eligibility === "ineligible") throw new Error(`Employee ${id} is not eligible: ${employee?.warningMessage ?? "not active"}`);
+      if (!employee?.contract || employee.eligibility === "ineligible") {
+        throw new Error(
+          `Employee ${employee?.fullName || id} cannot be processed for payrun: ${employee?.warningMessage ?? "No applicable contract for this period"}`
+        );
+      }
       return { employee, contract: employee.contract };
     });
     const [payrun] = await tx.insert(payruns).values({ name: input.name.trim(), salaryStructureId: input.salaryStructureId,
@@ -320,6 +470,7 @@ export async function getPayrunDetail(payrunId: string): Promise<PayrunDetail | 
       employeeNumber: employees.employeeNumber,
       firstName: employees.firstName,
       lastName: employees.lastName,
+      workEmail: employees.workEmail,
       departmentName: departments.name,
       jobTitle: jobPositions.title,
       periodStart: payslips.periodStart,
@@ -343,7 +494,7 @@ export async function getPayrunDetail(payrunId: string): Promise<PayrunDetail | 
     .leftJoin(contracts, eq(payslips.contractId, contracts.id))
     .leftJoin(payslipWarnings, eq(payslips.id, payslipWarnings.payslipId))
     .where(eq(payslips.payrunId, payrunId))
-    .groupBy(payslips.id, employees.id, departments.id, jobPositions.id, contracts.id)
+    .groupBy(payslips.id, employees.id, employees.workEmail, departments.id, jobPositions.id, contracts.id)
     .orderBy(asc(employees.employeeNumber));
 
   const slipItems: PayslipSummaryItem[] = rawSlips.map((s) => ({
@@ -353,6 +504,7 @@ export async function getPayrunDetail(payrunId: string): Promise<PayrunDetail | 
     employeeId: s.employeeId,
     employeeName: `${s.firstName || ""} ${s.lastName || ""}`.trim() || "Employee",
     employeeNumber: s.employeeNumber || "",
+    workEmail: s.workEmail || null,
     departmentName: s.departmentName,
     jobTitle: s.jobTitle,
     periodStart: s.periodStart,
@@ -445,20 +597,14 @@ export async function computePayrunExecution(payrunId: string) {
 
     if (!emp) throw new Error("Employee not found");
 
-    // 2. Get applicable contract
-    const matchingContracts = await db
-      .select()
-      .from(contracts)
-      .where(
-        and(
-          eq(contracts.employeeId, slip.employeeId),
-          eq(contracts.status, "active"),
-          sql`${contracts.startDate} <= ${payrun.periodStart}`,
-          or(isNull(contracts.endDate), sql`${contracts.endDate} >= ${payrun.periodEnd}`)
-        )
-      )
-      ;
-    const contract = matchingContracts.length === 1 ? matchingContracts[0] : null;
+    // 2. Resolve applicable contract using centralized, date-aware resolver
+    const resolution = await getApplicableContract(
+      slip.employeeId,
+      { periodStart: payrun.periodStart, periodEnd: payrun.periodEnd },
+      db
+    );
+    const contract = resolution.status === "VALID" ? resolution.contract : null;
+    const contractResolutionError = resolution.status !== "VALID" ? resolution.message : null;
 
     // 3. Load structure & rules
     const structureId =
@@ -526,7 +672,9 @@ export async function computePayrunExecution(payrunId: string) {
     let computation = null;
     let calculationError: string | null = null;
     try {
-      if (!context) throw new Error("Missing or ambiguous contract covering the full period");
+      if (!context || !contract) {
+        throw new Error(contractResolutionError || "Missing or ambiguous contract covering the full payroll period");
+      }
       if (!structure?.isActive) throw new Error("Salary structure is inactive or missing");
       if (contract?.salaryStructureId && contract.salaryStructureId !== structureId) throw new Error("Contract structure mismatch");
       computation = executeSalaryEngine(rules, context);
@@ -781,49 +929,28 @@ export async function sendPayrunPayslipsExecution(payrunId: string) {
         }
       }
 
-      await resend.emails.send({
-        from: "PeoplePay360 <payroll@resend.dev>",
+      const sendRes = await resend.emails.send({
+        from: getFromEmail(),
         to: [s.workEmail],
         subject: `Your Payslip for ${payrun.name} (${s.payslipNumber})`,
-        html: `
-          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-            <div style="border-bottom: 2px solid #2563eb; padding-bottom: 12px; margin-bottom: 16px;">
-              <h2 style="margin: 0; color: #1e293b;">PeoplePay360 Inc.</h2>
-              <p style="margin: 4px 0 0 0; color: #64748b; font-size: 14px;">Confidential Payslip Notice</p>
-            </div>
-            <p>Dear <strong>${s.firstName} ${s.lastName}</strong> (${s.employeeNumber}),</p>
-            <p>Your payslip for period <strong>${payrun.periodStart}</strong> to <strong>${payrun.periodEnd}</strong> has been generated and approved. Your itemized PDF payslip is attached.</p>
-            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 16px; margin: 16px 0;">
-              <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-                <tr>
-                  <td style="padding: 6px 0; color: #64748b;">Payslip Reference:</td>
-                  <td style="padding: 6px 0; text-align: right; font-weight: 600;">${s.payslipNumber}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 6px 0; color: #64748b;">Department:</td>
-                  <td style="padding: 6px 0; text-align: right;">${s.departmentName || "General"}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 6px 0; color: #64748b;">Gross Earnings:</td>
-                  <td style="padding: 6px 0; text-align: right; font-weight: 600;">₹${Number(s.grossAmount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 6px 0; color: #64748b;">Total Deductions:</td>
-                  <td style="padding: 6px 0; text-align: right; color: #dc2626;">-₹${Number(s.deductionAmount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
-                </tr>
-                <tr style="border-top: 1px solid #cbd5e1; font-size: 16px;">
-                  <td style="padding: 10px 0 0 0; font-weight: bold; color: #0f172a;">Net Pay:</td>
-                  <td style="padding: 10px 0 0 0; text-align: right; font-weight: bold; color: #16a34a;">₹${Number(s.netAmount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
-                </tr>
-              </table>
-            </div>
-            <p style="font-size: 12px; color: #94a3b8; margin-top: 20px;">
-              This is a system-generated notice. You can view, download, or print your complete itemized payslip breakdown through your PeoplePay360 Employee Portal.
-            </p>
-          </div>
-        `,
+        html: generatePayslipEmailHtml({
+          payslipNumber: s.payslipNumber,
+          employeeName: `${s.firstName || ""} ${s.lastName || ""}`.trim() || "Employee",
+          employeeNumber: s.employeeNumber || "",
+          departmentName: s.departmentName,
+          periodStart: payrun.periodStart,
+          periodEnd: payrun.periodEnd,
+          grossAmount: Number(s.grossAmount),
+          deductionAmount: Number(s.deductionAmount),
+          netAmount: Number(s.netAmount),
+        }),
         attachments,
       });
+
+      if (sendRes.error) {
+        throw new Error(sendRes.error.message || "Resend dispatch failed");
+      }
+
       sentCount++;
     } catch (err) {
       console.error(`Failed to send payslip email to ${s.workEmail}:`, err);
@@ -834,7 +961,8 @@ export async function sendPayrunPayslipsExecution(payrunId: string) {
   return {
     sentCount,
     failedCount,
-    summary: `${sentCount} sent · ${failedCount} failed`,
+    totalCount: slips.length,
+    summary: `${sentCount} sent · ${failedCount} failed of ${slips.length} employees`,
   };
 }
 
@@ -1023,6 +1151,7 @@ export async function getPayslipsList(filters?: {
       employeeId: payslips.employeeId,
       firstName: employees.firstName,
       lastName: employees.lastName,
+      workEmail: employees.workEmail,
       employeeNumber: employees.employeeNumber,
       departmentName: departments.name,
       jobTitle: jobPositions.title,
@@ -1047,7 +1176,7 @@ export async function getPayslipsList(filters?: {
     .leftJoin(contracts, eq(payslips.contractId, contracts.id))
     .leftJoin(payslipWarnings, eq(payslips.id, payslipWarnings.payslipId))
     .where(whereClause)
-    .groupBy(payslips.id, employees.id, departments.id, jobPositions.id, contracts.id)
+    .groupBy(payslips.id, employees.id, employees.workEmail, departments.id, jobPositions.id, contracts.id)
     .orderBy(desc(payslips.createdAt))
     .limit(filters?.limit || 100)
     .offset(filters?.offset || 0);
@@ -1059,6 +1188,7 @@ export async function getPayslipsList(filters?: {
     employeeId: s.employeeId,
     employeeName: `${s.firstName || ""} ${s.lastName || ""}`.trim() || "Employee",
     employeeNumber: s.employeeNumber || "",
+    workEmail: s.workEmail || null,
     departmentName: s.departmentName,
     jobTitle: s.jobTitle,
     periodStart: s.periodStart,
@@ -1077,69 +1207,133 @@ export async function getPayslipsList(filters?: {
   }));
 }
 
-export async function sendSinglePayslipExecution(payslipId: string) {
+export interface SendPayslipOptions {
+  recipientEmail?: string;
+  attachPdf?: boolean;
+  subject?: string;
+  customNote?: string;
+}
+
+export async function sendSinglePayslipExecution(
+  payslipId: string,
+  options?: SendPayslipOptions | string
+) {
+  const opts: SendPayslipOptions =
+    typeof options === "string" ? { recipientEmail: options } : options || {};
+
   const slip = await getPayslipDetail(payslipId);
   if (!slip) throw new Error("Payslip not found");
-  if (!slip.workEmail) throw new Error("Employee does not have an email address configured");
 
-  let attachments: Array<{ filename: string; content: Buffer }> | undefined = undefined;
-  try {
-    const pdfBytes = await generatePayslipPdf(slip);
-    attachments = [
-      {
-        filename: `payslip-${slip.payslipNumber}.pdf`,
-        content: Buffer.from(pdfBytes),
-      },
-    ];
-  } catch (pdfErr) {
-    console.warn(`Could not generate PDF attachment for payslip ${slip.payslipNumber}:`, pdfErr);
+  const targetEmail = (opts.recipientEmail || slip.workEmail || "").trim();
+  if (!targetEmail) {
+    throw new Error(
+      "Employee does not have a work email configured, and no recipient email was provided."
+    );
   }
 
-  await resend.emails.send({
-    from: "PeoplePay360 <payroll@resend.dev>",
-    to: [slip.workEmail],
-    subject: `Your Payslip ${slip.payslipNumber} for Period ${slip.periodStart} to ${slip.periodEnd}`,
-    html: `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-        <div style="border-bottom: 2px solid #2563eb; padding-bottom: 12px; margin-bottom: 16px;">
-          <h2 style="margin: 0; color: #1e293b;">PeoplePay360 Inc.</h2>
-          <p style="margin: 4px 0 0 0; color: #64748b; font-size: 14px;">Confidential Payslip Notice</p>
-        </div>
-        <p>Dear <strong>${slip.employeeName}</strong> (${slip.employeeNumber}),</p>
-        <p>Your itemized payslip for period <strong>${slip.periodStart}</strong> to <strong>${slip.periodEnd}</strong> is now available. Your official PDF payslip is attached.</p>
-        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 16px; margin: 16px 0;">
-          <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-            <tr>
-              <td style="padding: 6px 0; color: #64748b;">Payslip Reference:</td>
-              <td style="padding: 6px 0; text-align: right; font-weight: 600;">${slip.payslipNumber}</td>
-            </tr>
-            <tr>
-              <td style="padding: 6px 0; color: #64748b;">Department:</td>
-              <td style="padding: 6px 0; text-align: right;">${slip.departmentName || "General"}</td>
-            </tr>
-            <tr>
-              <td style="padding: 6px 0; color: #64748b;">Gross Earnings:</td>
-              <td style="padding: 6px 0; text-align: right; font-weight: 600;">₹${Number(slip.grossAmount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
-            </tr>
-            <tr>
-              <td style="padding: 6px 0; color: #64748b;">Total Deductions:</td>
-              <td style="padding: 6px 0; text-align: right; color: #dc2626;">-₹${Number(slip.deductionAmount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
-            </tr>
-            <tr style="border-top: 1px solid #cbd5e1; font-size: 16px;">
-              <td style="padding: 10px 0 0 0; font-weight: bold; color: #0f172a;">Net Pay:</td>
-              <td style="padding: 10px 0 0 0; text-align: right; font-weight: bold; color: #16a34a;">₹${Number(slip.netAmount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
-            </tr>
-          </table>
-        </div>
-        <p style="font-size: 12px; color: #94a3b8; margin-top: 20px;">
-          This is a system-generated notice. You can view or print your complete itemized payslip breakdown through your PeoplePay360 Employee Portal.
-        </p>
-      </div>
-    `,
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(targetEmail)) {
+    throw new Error(`Invalid recipient email address format: "${targetEmail}"`);
+  }
+
+  let attachments: Array<{ filename: string; content: Buffer }> | undefined = undefined;
+  if (opts.attachPdf !== false) {
+    try {
+      const pdfBytes = await generatePayslipPdf(slip);
+      attachments = [
+        {
+          filename: `payslip-${slip.payslipNumber}.pdf`,
+          content: Buffer.from(pdfBytes),
+        },
+      ];
+    } catch (pdfErr) {
+      console.warn(`Could not generate PDF attachment for payslip ${slip.payslipNumber}:`, pdfErr);
+    }
+  }
+
+  const fromAddress = getFromEmail();
+  const emailSubject =
+    opts.subject?.trim() ||
+    `Your Payslip ${slip.payslipNumber} for Period ${slip.periodStart} to ${slip.periodEnd}`;
+
+  const emailHtml = generatePayslipEmailHtml(slip, opts.customNote);
+
+  const sendResult = await resend.emails.send({
+    from: fromAddress,
+    to: [targetEmail],
+    subject: emailSubject,
+    html: emailHtml,
     attachments,
   });
 
-  return { success: true, email: slip.workEmail };
+  if (sendResult.error) {
+    console.error(`Resend send failed for ${slip.payslipNumber} to ${targetEmail}:`, sendResult.error);
+    throw new Error(sendResult.error.message || "Failed to dispatch email via Resend API");
+  }
+
+  return {
+    success: true,
+    email: targetEmail,
+    messageId: sendResult.data?.id,
+    payslipNumber: slip.payslipNumber,
+  };
+}
+
+export async function sendBulkPayslipsExecution(
+  payslipIds: string[],
+  options?: {
+    overrideRecipient?: string;
+    attachPdf?: boolean;
+    customNote?: string;
+  }
+) {
+  if (!payslipIds || payslipIds.length === 0) {
+    throw new Error("No payslips selected for email dispatch");
+  }
+
+  let sentCount = 0;
+  let failedCount = 0;
+  const results: Array<{
+    id: string;
+    payslipNumber: string;
+    email: string;
+    success: boolean;
+    error?: string;
+  }> = [];
+
+  for (const id of payslipIds) {
+    try {
+      const res = await sendSinglePayslipExecution(id, {
+        recipientEmail: options?.overrideRecipient,
+        attachPdf: options?.attachPdf,
+        customNote: options?.customNote,
+      });
+      sentCount++;
+      results.push({
+        id,
+        payslipNumber: res.payslipNumber,
+        email: res.email,
+        success: true,
+      });
+    } catch (err: any) {
+      failedCount++;
+      results.push({
+        id,
+        payslipNumber: id,
+        email: options?.overrideRecipient || "Configured Email",
+        success: false,
+        error: err.message || "Delivery failed",
+      });
+    }
+  }
+
+  return {
+    sentCount,
+    failedCount,
+    totalCount: payslipIds.length,
+    results,
+    summary: `${sentCount} sent successfully · ${failedCount} failed of ${payslipIds.length} requested`,
+  };
 }
 
 export function generatePayslipPrintHtml(slip: PayslipDetailItem): string {

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { calendarDays, dateSchema } from "@/server/domain/hr";
 import { transitionLeave } from "@/server/services/time-off/approval";
+import { validateLeaveRequest } from "@/server/services/time-off";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/index";
 import { timeOffRequests, timeOffTypes, employees } from "@/db/schema";
@@ -94,11 +95,14 @@ export async function POST(request: NextRequest) {
     const session = await requireAuth(request.headers);
     const role = normalizeRole((session.user as { role?: string })?.role);
     const currentEmployee = await getCurrentEmployee(session.user.id);
-    const body = z.object({ employeeId: z.string().uuid().optional(), timeOffTypeId: z.string().uuid(), startDate: dateSchema, endDate: dateSchema, reason: z.string().max(2000).optional() }).parse(await request.json());
-    const duration = calendarDays(body.startDate, body.endDate);
-    const [leaveType] = await db.select().from(timeOffTypes).where(eq(timeOffTypes.id, body.timeOffTypeId));
-    if (!leaveType?.isActive) throw new AuthorizationError("Select an active leave type", 400);
-    if (leaveType.unit !== "days") throw new AuthorizationError("Hourly requests require time-of-day input and are not supported by this form", 400);
+    const body = z.object({
+      employeeId: z.string().uuid().optional(),
+      timeOffTypeId: z.string().uuid(),
+      allocationId: z.string().uuid().optional().nullable(),
+      startDate: dateSchema,
+      endDate: dateSchema,
+      reason: z.string().max(2000).optional(),
+    }).parse(await request.json());
 
     let targetEmployeeId = body.employeeId;
 
@@ -119,14 +123,24 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Pre-submission domain validation: date order, positive duration, leave policy, remaining balance
+    const validation = await validateLeaveRequest({
+      employeeId: targetEmployeeId,
+      timeOffTypeId: body.timeOffTypeId,
+      startDate: body.startDate,
+      endDate: body.endDate,
+      allocationId: body.allocationId || null,
+    });
+
     const [newRequest] = await db
       .insert(timeOffRequests)
       .values({
         employeeId: targetEmployeeId,
         timeOffTypeId: body.timeOffTypeId,
+        allocationId: validation.suggestedAllocationId || body.allocationId || null,
         startDate: body.startDate,
         endDate: body.endDate,
-        duration: String(duration),
+        duration: String(validation.duration),
         reason: body.reason || null,
         status: "pending",
       })

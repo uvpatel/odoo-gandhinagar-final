@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useCan } from "@/hooks/use-permissions";
+import { TimeOffSubNav } from "@/components/time-off/time-off-subnav";
 import {
   Table,
   TableBody,
@@ -38,6 +39,7 @@ type TimeOffTypeItem = {
   id: string;
   name: string;
   code: string;
+  description: string | null;
   unit: "days" | "hours";
   requiresAllocation: boolean;
   approvalMode: "none" | "manager" | "hr" | "manager_and_hr";
@@ -61,6 +63,7 @@ export default function TimeOffTypesPage() {
   const [formData, setFormData] = React.useState({
     name: "Paid Time Off",
     code: "PTO",
+    description: "Standard annual paid leave with allocation tracking.",
     unit: "days" as TimeOffTypeItem["unit"],
     requiresAllocation: true,
     approvalMode: "manager" as TimeOffTypeItem["approvalMode"],
@@ -96,6 +99,7 @@ export default function TimeOffTypesPage() {
     setFormData({
       name: "",
       code: "",
+      description: "",
       unit: "days",
       requiresAllocation: true,
       approvalMode: "manager",
@@ -113,6 +117,7 @@ export default function TimeOffTypesPage() {
     setFormData({
       name: item.name,
       code: item.code,
+      description: item.description || "",
       unit: item.unit,
       requiresAllocation: item.requiresAllocation,
       approvalMode: item.approvalMode,
@@ -183,28 +188,7 @@ export default function TimeOffTypesPage() {
   return (
     <div className="flex flex-col gap-6 p-6">
       {/* Sub-Navigation Tabs */}
-      <div className="flex items-center gap-2 border-b pb-3">
-        <Link href="/time-off">
-          <Button variant="ghost" size="sm" className="text-xs">
-            Dashboard
-          </Button>
-        </Link>
-        <Link href="/time-off/requests">
-          <Button variant="ghost" size="sm" className="text-xs">
-            Time offs
-          </Button>
-        </Link>
-        <Link href="/time-off/types">
-          <Button variant="secondary" size="sm" className="text-xs font-semibold">
-            Time off Types
-          </Button>
-        </Link>
-        <Link href="/time-off/allocations">
-          <Button variant="ghost" size="sm" className="text-xs">
-            Allocations
-          </Button>
-        </Link>
-      </div>
+      <TimeOffSubNav />
 
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -263,10 +247,11 @@ export default function TimeOffTypesPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Type</TableHead>
+                  <TableHead>Type & Description</TableHead>
                   <TableHead>Unit</TableHead>
                   <TableHead>Allocation</TableHead>
-                  <TableHead>Approval</TableHead>
+                  <TableHead>Approval Workflow</TableHead>
+                  <TableHead>Payroll</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -279,25 +264,49 @@ export default function TimeOffTypesPage() {
                     onClick={() => openFormModal(item)}
                   >
                     <TableCell>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-sm">{item.name}</span>
-                        <Badge variant="outline" className="font-mono text-[10px]">
-                          {item.code}
-                        </Badge>
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-sm">{item.name}</span>
+                          <Badge variant="outline" className="font-mono text-[10px]">
+                            {item.code}
+                          </Badge>
+                        </div>
+                        {item.description && (
+                          <span className="text-xs text-muted-foreground line-clamp-1">
+                            {item.description}
+                          </span>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="text-xs capitalize font-medium">{item.unit}</TableCell>
                     <TableCell className="text-xs">
                       {item.requiresAllocation ? (
-                        <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                        <span className="inline-flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">
+                          <CheckCircle2Icon className="size-3" />
                           Required
                         </span>
                       ) : (
-                        <span className="text-muted-foreground">No</span>
+                        <span className="text-muted-foreground">Not Required</span>
                       )}
                     </TableCell>
                     <TableCell className="text-xs capitalize font-medium">
-                      {item.approvalMode.replace("_", " ")}
+                      {item.approvalMode === "manager_and_hr"
+                        ? "Manager & HR"
+                        : item.approvalMode === "none"
+                        ? "No Validation"
+                        : item.approvalMode.replace("_", " ")}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={`text-[10px] font-medium ${
+                          item.isPaid
+                            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                            : "border-slate-500/30 bg-slate-500/10 text-slate-600 dark:text-slate-400"
+                        }`}
+                      >
+                        {item.isPaid ? "Paid Leave" : "Unpaid Leave"}
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       <Badge
@@ -383,6 +392,18 @@ export default function TimeOffTypesPage() {
                 </div>
               </div>
 
+              <div className="space-y-1.5">
+                <Label htmlFor="description">Description</Label>
+                <textarea
+                  id="description"
+                  rows={2}
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Explain the purpose, rules, and coverage of this leave type..."
+                  className="w-full rounded-md border border-input bg-background p-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="unit">Unit</Label>
@@ -398,7 +419,7 @@ export default function TimeOffTypesPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="approvalMode">Approval</Label>
+                  <Label htmlFor="approvalMode">Approval Workflow</Label>
                   <select
                     id="approvalMode"
                     value={formData.approvalMode}
@@ -407,10 +428,10 @@ export default function TimeOffTypesPage() {
                     }
                     className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                   >
-                    <option value="manager">Manager</option>
-                    <option value="hr">HR</option>
-                    <option value="manager_and_hr">Manager & HR</option>
-                    <option value="none">No Approval Required</option>
+                    <option value="manager">Manager / Time Off Officer</option>
+                    <option value="hr">HR Only</option>
+                    <option value="manager_and_hr">Manager and HR (Two-stage)</option>
+                    <option value="none">No Validation Required</option>
                   </select>
                 </div>
               </div>
@@ -426,24 +447,30 @@ export default function TimeOffTypesPage() {
                     }
                     className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                   >
-                    <option value="true">Yes</option>
-                    <option value="false">No</option>
+                    <option value="true">Yes (Must have approved allocation balance)</option>
+                    <option value="false">No (Unlimited / Free requests)</option>
                   </select>
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="payrollWorkEntry">Payroll / Work Entry</Label>
-                  <Input
-                    id="payrollWorkEntry"
-                    value={formData.payrollWorkEntry}
-                    onChange={(e) => setFormData({ ...formData, payrollWorkEntry: e.target.value })}
-                  />
+                  <Label htmlFor="isPaid">Payroll Integration</Label>
+                  <select
+                    id="isPaid"
+                    value={formData.isPaid ? "true" : "false"}
+                    onChange={(e) =>
+                      setFormData({ ...formData, isPaid: e.target.value === "true" })
+                    }
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                  >
+                    <option value="true">Paid Leave (Counts as paid days in payroll)</option>
+                    <option value="false">Unpaid Leave (Deducted or unpaid in payroll)</option>
+                  </select>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="isActive">Active</Label>
+                  <Label htmlFor="isActive">Active Status</Label>
                   <select
                     id="isActive"
                     value={formData.isActive ? "true" : "false"}
@@ -452,17 +479,18 @@ export default function TimeOffTypesPage() {
                     }
                     className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                   >
-                    <option value="true">True</option>
-                    <option value="false">False</option>
+                    <option value="true">Active (Employees can request)</option>
+                    <option value="false">Inactive (Archived)</option>
                   </select>
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="displayColor">Display Color</Label>
+                  <Label htmlFor="displayColor">Display Badge Color</Label>
                   <Input
                     id="displayColor"
                     value={formData.displayColor}
                     onChange={(e) => setFormData({ ...formData, displayColor: e.target.value })}
+                    placeholder="e.g. Blue, Emerald, Amber"
                   />
                 </div>
               </div>

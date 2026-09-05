@@ -41,6 +41,7 @@ import {
 } from "lucide-react";
 import { cn } from "cn";
 import { toast } from "sonner";
+import { SendPayslipEmailDialog } from "./send-payslip-email-dialog";
 
 interface PayslipDetailViewProps {
   payslipId: string;
@@ -61,25 +62,8 @@ export function PayslipDetailView({ payslipId }: PayslipDetailViewProps) {
 
   const slip = data?.data;
 
-  // Single Payslip Email Send Mutation
-  const sendEmailMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/payroll/payslips/${payslipId}/send`, {
-        method: "POST",
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Failed to send email");
-      }
-      return res.json();
-    },
-    onSuccess: (res) => {
-      toast.success(res.message || "Payslip dispatched to employee email");
-    },
-    onError: (err: any) => {
-      toast.error(err.message || "Failed to send payslip email");
-    },
-  });
+  // Single Payslip Email Dialog State
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -195,22 +179,15 @@ export function PayslipDetailView({ payslipId }: PayslipDetailViewProps) {
         </div>
 
         <div className="flex items-center gap-2 self-start sm:self-auto">
-          {slip.workEmail && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => sendEmailMutation.mutate()}
-              disabled={sendEmailMutation.isPending}
-              className="gap-1.5"
-            >
-              {sendEmailMutation.isPending ? (
-                <Loader2Icon className="size-3.5 animate-spin" />
-              ) : (
-                <SendIcon className="size-3.5 text-primary" />
-              )}
-              <span>Email Slip</span>
-            </Button>
-          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setEmailDialogOpen(true)}
+            className="gap-1.5"
+          >
+            <SendIcon className="size-3.5 text-primary" />
+            <span>Email Slip</span>
+          </Button>
 
           <a
             href={`/api/payroll/payslips/${slip.id}/pdf`}
@@ -437,6 +414,13 @@ export function PayslipDetailView({ payslipId }: PayslipDetailViewProps) {
           </div>
         </CardContent>
       </Card>
+
+      <SendPayslipEmailDialog
+        payslip={slip}
+        open={emailDialogOpen}
+        onOpenChange={setEmailDialogOpen}
+        onSuccess={() => refetch()}
+      />
     </div>
   );
 }

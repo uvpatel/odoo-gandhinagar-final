@@ -30,8 +30,11 @@ import {
   BanIcon,
   XIcon,
   UserCheckIcon,
+  AlertTriangleIcon,
+  InfoIcon,
 } from "lucide-react";
 import { toast } from "sonner";
+import { TimeOffSubNav } from "@/components/time-off/time-off-subnav";
 
 type TimeOffRequestItem = {
   id: string;
@@ -50,12 +53,26 @@ type TimeOffTypeItem = {
   id: string;
   name: string;
   code: string;
+  requiresAllocation?: boolean;
+};
+
+type PersonalBalance = {
+  timeOffTypeId: string;
+  name: string;
+  code: string;
+  unit: "days" | "hours";
+  requiresAllocation: boolean;
+  isPaid: boolean;
+  allocated: number;
+  taken: number;
+  remaining: number;
 };
 
 export default function MyTimeOffPage() {
   const { can, role, isEmployee } = useCan();
   const [requests, setRequests] = React.useState<TimeOffRequestItem[]>([]);
   const [types, setTypes] = React.useState<TimeOffTypeItem[]>([]);
+  const [balances, setBalances] = React.useState<PersonalBalance[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
@@ -63,10 +80,11 @@ export default function MyTimeOffPage() {
   const canCreateSelf = can("timeOffRequest", "create-self");
   const canCancelSelf = can("timeOffRequest", "cancel-self");
 
+  const todayStr = new Date().toISOString().split("T")[0];
   const [formData, setFormData] = React.useState({
     timeOffTypeId: "",
-    startDate: "",
-    endDate: "",
+    startDate: todayStr,
+    endDate: todayStr,
     duration: "1",
     reason: "",
   });
@@ -74,12 +92,14 @@ export default function MyTimeOffPage() {
   const fetchData = React.useCallback(async () => {
     try {
       setIsLoading(true);
-      const [reqRes, typesRes] = await Promise.all([
+      const [reqRes, typesRes, balRes] = await Promise.all([
         fetch("/api/time-off/requests?self=true"),
         fetch("/api/time-off/types"),
+        fetch("/api/time-off/balances?self=true"),
       ]);
       const reqData = await reqRes.json();
       const typesData = await typesRes.json();
+      const balData = await balRes.json();
 
       if (reqData.data) setRequests(reqData.data);
       if (typesData.data) {
@@ -87,6 +107,9 @@ export default function MyTimeOffPage() {
         if (typesData.data.length > 0 && !formData.timeOffTypeId) {
           setFormData((prev) => ({ ...prev, timeOffTypeId: typesData.data[0].id }));
         }
+      }
+      if (balData.data?.leaveTypes) {
+        setBalances(balData.data.leaveTypes);
       }
     } catch (err) {
       console.error("Failed to load time off data:", err);
@@ -98,6 +121,32 @@ export default function MyTimeOffPage() {
   React.useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const handleDateChange = (start: string, end: string) => {
+    if (!start || !end) return;
+    const d1 = new Date(start);
+    const d2 = new Date(end);
+    const diffTime = Math.max(0, d2.getTime() - d1.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    setFormData((prev) => ({
+      ...prev,
+      startDate: start,
+      endDate: end,
+      duration: String(diffDays),
+    }));
+  };
+
+  const openRequestModal = () => {
+    const today = new Date().toISOString().split("T")[0];
+    setFormData({
+      timeOffTypeId: types[0]?.id || "",
+      startDate: today,
+      endDate: today,
+      duration: "1",
+      reason: "",
+    });
+    setIsModalOpen(true);
+  };
 
   const handleCancelRequest = async (id: string) => {
     if (!canCancelSelf) {
@@ -164,6 +213,9 @@ export default function MyTimeOffPage() {
 
   return (
     <div className="flex flex-col gap-6 p-6">
+      {/* Sub-Navigation Tabs */}
+      <TimeOffSubNav />
+
       {/* Page Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -184,7 +236,7 @@ export default function MyTimeOffPage() {
 
         <div>
           <Button
-            onClick={() => setIsModalOpen(true)}
+            onClick={openRequestModal}
             disabled={!canCreateSelf}
             className="gap-2"
           >
@@ -192,6 +244,80 @@ export default function MyTimeOffPage() {
             Request Time Off
           </Button>
         </div>
+      </div>
+
+      {/* Personal Balances & Entitlements */}
+      <div className="space-y-3">
+        <div>
+          <h2 className="text-base font-semibold tracking-tight">Personal Leave Balances</h2>
+          <p className="text-xs text-muted-foreground">
+            Current available allocations, consumption, and remaining balance for approved policy types.
+          </p>
+        </div>
+
+        {balances.length === 0 ? (
+          <Card className="p-6 text-center text-xs text-muted-foreground">
+            No active leave balance accounts configured. Contact HR for allocations.
+          </Card>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {balances.map((bal) => {
+              const pct = bal.allocated > 0 ? Math.min(100, Math.round((bal.taken / bal.allocated) * 100)) : 0;
+              return (
+                <Card key={bal.timeOffTypeId} className="border-border/60 hover:shadow-xs transition-shadow">
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-semibold text-sm">{bal.name}</span>
+                        <Badge variant="outline" className="font-mono text-[10px]">
+                          {bal.code}
+                        </Badge>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className={`text-[10px] ${
+                          bal.isPaid
+                            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600"
+                            : "border-slate-500/30 bg-slate-500/10 text-slate-600"
+                        }`}
+                      >
+                        {bal.isPaid ? "Paid" : "Unpaid"}
+                      </Badge>
+                    </div>
+                    <CardDescription className="text-xs">
+                      {bal.requiresAllocation ? "Allocation Required" : "Unlimited Entitlement"}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3 pt-1">
+                    <div className="flex items-baseline justify-between">
+                      <div className="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400">
+                        {bal.requiresAllocation ? `${bal.remaining} ${bal.unit}` : "Unlimited"}
+                      </div>
+                      <div className="text-xs text-muted-foreground font-mono">
+                        {bal.requiresAllocation ? `${bal.taken} / ${bal.allocated} ${bal.unit} taken` : `${bal.taken} ${bal.unit} taken`}
+                      </div>
+                    </div>
+
+                    {bal.requiresAllocation && (
+                      <div className="space-y-1">
+                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                          <div
+                            className="h-full rounded-full bg-emerald-500 transition-all duration-300"
+                            style={{ width: `${Math.max(0, 100 - pct)}%` }}
+                          />
+                        </div>
+                        <div className="flex justify-between text-[10px] text-muted-foreground font-mono">
+                          <span>{pct}% Consumed</span>
+                          <span>{bal.remaining} {bal.unit} Remaining</span>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* KPI Cards */}
@@ -340,83 +466,127 @@ export default function MyTimeOffPage() {
               </Button>
             </div>
 
-            <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="timeOffTypeId">Leave Type</Label>
-                <select
-                  id="timeOffTypeId"
-                  required
-                  value={formData.timeOffTypeId}
-                  onChange={(e) => setFormData({ ...formData, timeOffTypeId: e.target.value })}
-                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                >
-                  {types.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name} ({t.code})
-                    </option>
-                  ))}
-                </select>
-              </div>
+            {(() => {
+              const selectedBal = balances.find((b) => b.timeOffTypeId === formData.timeOffTypeId);
+              const isInsufficient = Boolean(selectedBal?.requiresAllocation && selectedBal.remaining < Number(formData.duration));
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="startDate">Start Date</Label>
-                  <Input
-                    id="startDate"
-                    type="date"
-                    required
-                    value={formData.startDate}
-                    onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="endDate">End Date</Label>
-                  <Input
-                    id="endDate"
-                    type="date"
-                    required
-                    value={formData.endDate}
-                    onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
-                  />
-                </div>
-              </div>
+              return (
+                <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="timeOffTypeId">Leave Type</Label>
+                    <select
+                      id="timeOffTypeId"
+                      required
+                      value={formData.timeOffTypeId}
+                      onChange={(e) => setFormData({ ...formData, timeOffTypeId: e.target.value })}
+                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    >
+                      {types.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name} ({t.code})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="duration">Duration (Days)</Label>
-                <Input
-                  id="duration"
-                  type="number"
-                  step="0.5"
-                  min="0.5"
-                  required
-                  value={formData.duration}
-                  onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
-                />
-              </div>
+                  {/* Available Balance Preview */}
+                  {selectedBal && (
+                    <div
+                      className={`rounded-lg border p-3 text-xs ${
+                        isInsufficient
+                          ? "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-400"
+                          : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                      }`}
+                    >
+                      {!selectedBal.requiresAllocation ? (
+                        <div className="flex items-center gap-1.5 font-medium">
+                          <CheckCircle2Icon className="size-4" />
+                          <span>No allocation required — Unlimited allowance for this policy.</span>
+                        </div>
+                      ) : isInsufficient ? (
+                        <div className="flex items-start gap-2">
+                          <AlertTriangleIcon className="size-4 shrink-0 mt-0.5 text-rose-600" />
+                          <div>
+                            <span className="font-semibold">Insufficient balance:</span> You have{" "}
+                            <span className="font-bold">{selectedBal.remaining} {selectedBal.unit}</span>{" "}
+                            available, but requested <span className="font-bold">{formData.duration} {selectedBal.unit}</span>.
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 font-medium">
+                            <CheckCircle2Icon className="size-4" />
+                            <span>Available: {selectedBal.remaining} {selectedBal.unit} remaining</span>
+                          </div>
+                          <span className="text-[11px] opacity-80 font-mono">
+                            {selectedBal.taken} used / {selectedBal.allocated} total
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
-              <div className="space-y-1.5">
-                <Label htmlFor="reason">Reason / Notes (Optional)</Label>
-                <Input
-                  id="reason"
-                  placeholder="e.g. Doctor's appointment, family event..."
-                  value={formData.reason}
-                  onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
-                />
-              </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="startDate">Start Date</Label>
+                      <Input
+                        id="startDate"
+                        type="date"
+                        required
+                        value={formData.startDate}
+                        onChange={(e) => handleDateChange(e.target.value, formData.endDate)}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="endDate">End Date</Label>
+                      <Input
+                        id="endDate"
+                        type="date"
+                        required
+                        value={formData.endDate}
+                        onChange={(e) => handleDateChange(formData.startDate, e.target.value)}
+                      />
+                    </div>
+                  </div>
 
-              <div className="flex justify-end gap-2 pt-4 border-t">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsModalOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? "Submitting..." : "Submit Request"}
-                </Button>
-              </div>
-            </form>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="duration">Duration (Days)</Label>
+                    <Input
+                      id="duration"
+                      type="number"
+                      step="0.5"
+                      min="0.5"
+                      required
+                      value={formData.duration}
+                      onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="reason">Reason / Notes (Optional)</Label>
+                    <Input
+                      id="reason"
+                      placeholder="e.g. Doctor's appointment, family event..."
+                      value={formData.reason}
+                      onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-4 border-t">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setIsModalOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={isSubmitting || isInsufficient}>
+                      {isSubmitting ? "Submitting..." : "Submit Request"}
+                    </Button>
+                  </div>
+                </form>
+              );
+            })()}
           </div>
         </div>
       )}

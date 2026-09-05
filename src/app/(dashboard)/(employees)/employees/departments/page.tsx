@@ -298,7 +298,7 @@ export default function DepartmentsPage() {
                   <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
                     <div className="flex items-center justify-center gap-2">
                       <div className="size-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                      Loading departments from Neon DB...
+                      Loading departments f
                     </div>
                   </TableCell>
                 </TableRow>

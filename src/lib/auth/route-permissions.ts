@@ -115,7 +115,7 @@ export const routeRules: RouteRule[] = [
   },
   {
     path: "/time-off",
-    roles: ["hr_manager", "payroll_user", "payroll_manager", "admin"],
+    roles: ["employee", "hr_manager", "payroll_user", "payroll_manager", "admin"],
   },
 
   // Reports

@@ -312,7 +312,7 @@ export const data: NavData = {
     },
     {
       name: "Time Off",
-      url: "/time-off/requests",
+      url: "/time-off",
       icon: <ClipboardListIcon />,
     },
     {

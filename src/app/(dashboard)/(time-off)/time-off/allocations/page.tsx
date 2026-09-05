@@ -6,6 +6,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCan } from "@/hooks/use-permissions";
+import { TimeOffSubNav } from "@/components/time-off/time-off-subnav";
 import {
   Table,
   TableBody,
@@ -32,8 +33,10 @@ import {
   PencilIcon,
   Trash2Icon,
   CheckCircle2Icon,
+  XCircleIcon,
   XIcon,
   CalendarIcon,
+  CheckIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -185,6 +188,54 @@ function TimeOffAllocationsContent() {
     }
   };
 
+  const handleApprove = async (alloc: AllocationItem, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (!canManage) {
+      toast.error("Permission denied", { description: "Privileges required to approve allocations." });
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/time-off/allocations/${alloc.id}/approve`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to approve allocation");
+
+      toast.success("Allocation approved", {
+        description: `Leave balance has been activated for ${alloc.employeeName}.`,
+      });
+      fetchData();
+    } catch (err: any) {
+      toast.error("Approval failed", { description: err.message });
+    }
+  };
+
+  const handleRefuse = async (alloc: AllocationItem, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (!canManage) {
+      toast.error("Permission denied", { description: "Privileges required to refuse allocations." });
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to refuse allocation for ${alloc.employeeName}?`)) return;
+
+    try {
+      const res = await fetch(`/api/time-off/allocations/${alloc.id}/refuse`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to refuse allocation");
+
+      toast.info("Allocation refused", {
+        description: `Allocation for ${alloc.employeeName} was marked as refused.`,
+      });
+      fetchData();
+    } catch (err: any) {
+      toast.error("Refusal failed", { description: err.message });
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -227,28 +278,7 @@ function TimeOffAllocationsContent() {
   return (
     <div className="flex flex-col gap-6 p-6">
       {/* Sub-Navigation Tabs */}
-      <div className="flex items-center gap-2 border-b pb-3">
-        <Link href="/time-off">
-          <Button variant="ghost" size="sm" className="text-xs">
-            Dashboard
-          </Button>
-        </Link>
-        <Link href="/time-off/requests">
-          <Button variant="ghost" size="sm" className="text-xs">
-            Time offs
-          </Button>
-        </Link>
-        <Link href="/time-off/types">
-          <Button variant="ghost" size="sm" className="text-xs">
-            Time off Types
-          </Button>
-        </Link>
-        <Link href="/time-off/allocations">
-          <Button variant="secondary" size="sm" className="text-xs font-semibold">
-            Allocations
-          </Button>
-        </Link>
-      </div>
+      <TimeOffSubNav />
 
       {employeeFilter && (
         <div className="flex items-center justify-between rounded-lg bg-blue-500/10 border border-blue-500/30 px-4 py-2.5 text-xs text-blue-700 dark:text-blue-300">
@@ -317,60 +347,109 @@ function TimeOffAllocationsContent() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Employee</TableHead>
-                  <TableHead>Type</TableHead>
+                  <TableHead>Leave Type</TableHead>
+                  <TableHead>Validity Window</TableHead>
                   <TableHead>Allocated</TableHead>
                   <TableHead>Taken</TableHead>
-                  <TableHead>Remaining</TableHead>
+                  <TableHead>Remaining Balance</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredAllocations.map((alloc) => (
-                  <TableRow
-                    key={alloc.id}
-                    className="cursor-pointer hover:bg-muted/40"
-                    onClick={() => openFormModal(alloc)}
-                  >
-                    <TableCell className="font-medium text-sm">{alloc.employeeName}</TableCell>
-                    <TableCell className="text-xs">{alloc.timeOffTypeName}</TableCell>
-                    <TableCell className="text-xs font-mono font-semibold">
-                      {alloc.allocated} days
-                    </TableCell>
-                    <TableCell className="text-xs font-mono text-amber-600 dark:text-amber-400">
-                      {alloc.taken} days
-                    </TableCell>
-                    <TableCell className="text-xs font-mono font-semibold text-emerald-600 dark:text-emerald-400">
-                      {alloc.remaining} days
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={`text-[11px] px-2.5 py-0.5 capitalize ${
-                          statusColors[alloc.status] || ""
-                        }`}
-                      >
-                        {statusLabels[alloc.status] || alloc.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1.5">
-                        <Button variant="ghost" size="icon-xs" onClick={() => openFormModal(alloc)}>
-                          <PencilIcon className="size-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          onClick={() => handleDelete(alloc)}
-                          disabled={!canManage}
-                          className="text-destructive hover:bg-destructive/10"
+                {filteredAllocations.map((alloc) => {
+                  const isApproved = alloc.status === "approved";
+                  const isPending = alloc.status === "pending" || alloc.status === "draft";
+                  return (
+                    <TableRow
+                      key={alloc.id}
+                      className="cursor-pointer hover:bg-muted/40"
+                      onClick={() => openFormModal(alloc)}
+                    >
+                      <TableCell className="font-medium text-sm">{alloc.employeeName}</TableCell>
+                      <TableCell className="text-xs font-medium">{alloc.timeOffTypeName}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground font-mono">
+                        {alloc.validFrom} → {alloc.validTo || "Indefinite"}
+                      </TableCell>
+                      <TableCell className="text-xs font-mono font-semibold">
+                        {alloc.allocated} days
+                      </TableCell>
+                      <TableCell className="text-xs font-mono text-amber-600 dark:text-amber-400">
+                        {alloc.taken} days
+                      </TableCell>
+                      <TableCell className="text-xs font-mono">
+                        {!isApproved ? (
+                          <span className="text-muted-foreground italic text-[11px]">
+                            Pending Approval
+                          </span>
+                        ) : alloc.remaining === 0 ? (
+                          <span className="font-semibold text-rose-600 dark:text-rose-400">
+                            0 days (Exhausted)
+                          </span>
+                        ) : alloc.remaining <= 3 ? (
+                          <span className="font-semibold text-amber-600 dark:text-amber-400">
+                            {alloc.remaining} days (Low)
+                          </span>
+                        ) : (
+                          <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                            {alloc.remaining} days
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={`text-[11px] px-2.5 py-0.5 capitalize ${
+                            statusColors[alloc.status] || ""
+                          }`}
                         >
-                          <Trash2Icon className="size-3.5" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                          {statusLabels[alloc.status] || alloc.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1.5">
+                          {isPending && canManage && (
+                            <>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(e) => handleApprove(alloc, e)}
+                                className="h-7 px-2 text-xs text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 gap-1"
+                                title="Approve this allocation"
+                              >
+                                <CheckIcon className="size-3" />
+                                Approve
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(e) => handleRefuse(alloc, e)}
+                                className="h-7 px-2 text-xs text-rose-600 border-rose-500/30 hover:bg-rose-500/10 gap-1"
+                                title="Refuse this allocation"
+                              >
+                                <XIcon className="size-3" />
+                                Refuse
+                              </Button>
+                            </>
+                          )}
+                          <Button variant="ghost" size="icon-xs" onClick={() => openFormModal(alloc)}>
+                            <PencilIcon className="size-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            onClick={() => handleDelete(alloc)}
+                            disabled={!canManage || isApproved}
+                            title={isApproved ? "Approved allocations cannot be deleted" : "Delete allocation"}
+                            className="text-destructive hover:bg-destructive/10 disabled:opacity-30"
+                          >
+                            <Trash2Icon className="size-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </CardContent>
@@ -515,13 +594,27 @@ function TimeOffAllocationsContent() {
                   </select>
                 </div>
 
-                {/* Validity */}
                 <div className="space-y-1.5">
-                  <Label>Validity</Label>
-                  <div className="h-9 w-full rounded-md border border-input bg-muted px-3 text-sm flex items-center text-muted-foreground">
-                    2026 Annual Balance
-                  </div>
+                  <Label htmlFor="validFrom">Valid From</Label>
+                  <Input
+                    id="validFrom"
+                    type="date"
+                    required
+                    value={formData.validFrom}
+                    onChange={(e) => setFormData({ ...formData, validFrom: e.target.value })}
+                  />
                 </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="validTo">Valid To (Optional Expiration)</Label>
+                <Input
+                  id="validTo"
+                  type="date"
+                  value={formData.validTo}
+                  onChange={(e) => setFormData({ ...formData, validTo: e.target.value })}
+                  placeholder="Leave empty for indefinite validity"
+                />
               </div>
 
               {/* Description */}
@@ -529,7 +622,7 @@ function TimeOffAllocationsContent() {
                 <Label htmlFor="description">Description</Label>
                 <textarea
                   id="description"
-                  rows={3}
+                  rows={2}
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   className="w-full rounded-md border border-input bg-background p-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
@@ -541,22 +634,53 @@ function TimeOffAllocationsContent() {
               <div className="flex items-start gap-2.5 rounded-md bg-emerald-500/5 border border-emerald-500/20 p-3 text-xs text-emerald-800 dark:text-emerald-300">
                 <InfoIcon className="size-4 shrink-0 mt-0.5 text-emerald-600 dark:text-emerald-400" />
                 <div>
-                  <span className="font-semibold">Useful note:</span> Approved allocation is what creates available leave balance for the employee.
+                  <span className="font-semibold">Useful note:</span> Only <span className="font-semibold">Approved</span> allocations within their validity period create usable leave balances for employee requests.
                 </div>
               </div>
 
               {/* Action Buttons */}
-              <div className="flex justify-end gap-2 pt-4 border-t">
-                <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting
-                    ? "Saving..."
-                    : selectedAlloc
-                    ? "Update Allocation"
-                    : "Create Allocation"}
-                </Button>
+              <div className="flex items-center justify-between pt-4 border-t">
+                <div>
+                  {selectedAlloc && (selectedAlloc.status === "pending" || selectedAlloc.status === "draft") && canManage && (
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        onClick={async () => {
+                          await handleApprove(selectedAlloc);
+                          setIsModalOpen(false);
+                        }}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-9 gap-1.5"
+                      >
+                        <CheckIcon className="size-3.5" />
+                        Approve Allocation
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={async () => {
+                          await handleRefuse(selectedAlloc);
+                          setIsModalOpen(false);
+                        }}
+                        className="text-rose-600 border-rose-500/30 hover:bg-rose-500/10 text-xs h-9 gap-1.5"
+                      >
+                        <XIcon className="size-3.5" />
+                        Refuse
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={isSubmitting}>
+                    {isSubmitting
+                      ? "Saving..."
+                      : selectedAlloc
+                      ? "Update Allocation"
+                      : "Create Allocation"}
+                  </Button>
+                </div>
               </div>
             </form>
           </div>

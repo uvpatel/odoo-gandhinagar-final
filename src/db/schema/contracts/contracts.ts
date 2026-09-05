@@ -68,6 +68,8 @@ export const contracts = pgTable(
     index("contract_start_date_idx").on(table.startDate),
     index("contract_end_date_idx").on(table.endDate),
     index("contract_status_idx").on(table.status),
+    index("contract_employee_dates_idx").on(table.employeeId, table.startDate, table.endDate),
+    index("contract_employee_status_idx").on(table.employeeId, table.status),
   ],
 );
 

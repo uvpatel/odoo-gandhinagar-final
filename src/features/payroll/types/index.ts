@@ -88,6 +88,7 @@ export interface PayslipSummaryItem {
   hasErrors: boolean;
   contractNumber: string | null;
   contractWage: number | null;
+  workEmail?: string | null;
 }
 
 export interface PayslipDetailItem {

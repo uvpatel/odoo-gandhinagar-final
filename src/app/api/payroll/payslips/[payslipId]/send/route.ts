@@ -10,7 +10,24 @@ export async function POST(
     await requirePermission("payslip", "send", request.headers);
     const { payslipId } = await params;
 
-    const result = await sendSinglePayslipExecution(payslipId);
+    let body: any = null;
+    try {
+      body = await request.json();
+    } catch {
+      // Body is optional
+    }
+
+    const recipientEmail = typeof body?.recipientEmail === "string" ? body.recipientEmail.trim() : undefined;
+    const attachPdf = typeof body?.attachPdf === "boolean" ? body.attachPdf : true;
+    const subject = typeof body?.subject === "string" ? body.subject.trim() : undefined;
+    const customNote = typeof body?.customNote === "string" ? body.customNote.trim() : undefined;
+
+    const result = await sendSinglePayslipExecution(payslipId, {
+      recipientEmail,
+      attachPdf,
+      subject,
+      customNote,
+    });
 
     return NextResponse.json({
       data: result,

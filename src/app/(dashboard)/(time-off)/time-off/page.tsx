@@ -2,7 +2,9 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCan } from "@/hooks/use-permissions";
+import { TimeOffSubNav } from "@/components/time-off/time-off-subnav";
 import {
   Card,
   CardContent,
@@ -24,7 +26,8 @@ import {
 } from "lucide-react";
 
 export default function TimeOffPage() {
-  const { can } = useCan();
+  const router = useRouter();
+  const { can, role, isEmployee } = useCan();
   const [stats, setStats] = React.useState({
     totalRequests: 0,
     pendingRequests: 0,
@@ -33,6 +36,13 @@ export default function TimeOffPage() {
     totalTypes: 0,
   });
   const [isLoading, setIsLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    if (role === "employee") {
+      router.replace("/time-off/me");
+      return;
+    }
+  }, [role, router]);
 
   React.useEffect(() => {
     async function loadStats() {
@@ -69,29 +79,8 @@ export default function TimeOffPage() {
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      {/* Sub-Navigation Tabs (From Wireframe) */}
-      <div className="flex items-center gap-2 border-b pb-3">
-        <Link href="/time-off">
-          <Button variant="secondary" size="sm" className="text-xs font-semibold">
-            Dashboard
-          </Button>
-        </Link>
-        <Link href="/time-off/requests">
-          <Button variant="ghost" size="sm" className="text-xs">
-            Time offs
-          </Button>
-        </Link>
-        <Link href="/time-off/types">
-          <Button variant="ghost" size="sm" className="text-xs">
-            Time off Types
-          </Button>
-        </Link>
-        <Link href="/time-off/allocations">
-          <Button variant="ghost" size="sm" className="text-xs">
-            Allocations
-          </Button>
-        </Link>
-      </div>
+      {/* Sub-Navigation Tabs */}
+      <TimeOffSubNav />
 
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
