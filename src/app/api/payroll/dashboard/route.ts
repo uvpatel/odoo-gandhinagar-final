@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     }
 
     const userRole = normalizeRole((session.user as { role?: string })?.role);
-    const canViewDashboard = hasPermission(userRole, "dashboard", "view");
+    const canViewDashboard = hasPermission(userRole, "report", "payroll");
 
     if (!canViewDashboard) {
       return NextResponse.json(

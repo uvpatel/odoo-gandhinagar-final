@@ -1,7 +1,10 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import * as React from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCan } from "@/hooks/use-permissions";
 import {
   Table,
@@ -84,7 +87,7 @@ const statusLabels: Record<string, string> = {
   draft: "Draft",
 };
 
-export default function TimeOffRequestsPage() {
+function TimeOffRequestsContent() {
   const { can, role } = useCan();
   const [requests, setRequests] = React.useState<TimeOffRequestItem[]>([]);
   const [typesList, setTypesList] = React.useState<TimeOffTypeOption[]>([]);
@@ -92,6 +95,8 @@ export default function TimeOffRequestsPage() {
   const [isLoading, setIsLoading] = React.useState(true);
 
   // Filters
+  const searchParams = useSearchParams();
+  const [employeeFilter, setEmployeeFilter] = React.useState<string | null>(searchParams.get("employeeId"));
   const [searchTerm, setSearchTerm] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState("all");
   const [isMyTeamOnly, setIsMyTeamOnly] = React.useState(false);
@@ -293,7 +298,8 @@ export default function TimeOffRequestsPage() {
       r.employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       r.timeOffTypeName.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === "all" || r.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesEmployee = !employeeFilter || r.employeeId === employeeFilter;
+    return matchesSearch && matchesStatus && matchesEmployee;
   });
 
   return (
@@ -321,6 +327,15 @@ export default function TimeOffRequestsPage() {
           </Button>
         </Link>
       </div>
+
+      {employeeFilter && (
+        <div className="flex items-center justify-between rounded-lg bg-blue-500/10 border border-blue-500/30 px-4 py-2.5 text-xs text-blue-700 dark:text-blue-300">
+          <span>Filtering leave requests for selected employee</span>
+          <Button variant="ghost" size="sm" onClick={() => setEmployeeFilter(null)} className="h-7 text-xs">
+            Clear Filter
+          </Button>
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -671,6 +686,14 @@ export default function TimeOffRequestsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function TimeOffRequestsPage() {
+  return (
+    <React.Suspense fallback={<div className="p-8 text-center text-xs text-muted-foreground">Loading leave requests...</div>}>
+      <TimeOffRequestsContent />
+    </React.Suspense>
   );
 }
 

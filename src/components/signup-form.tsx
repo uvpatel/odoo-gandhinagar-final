@@ -30,7 +30,6 @@ export function SignupForm({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [role, setRole] = useState("employee");
   const [isLoading, setIsLoading] = useState(false);
   const [isGithubLoading, setIsGithubLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
@@ -63,11 +62,10 @@ export function SignupForm({
     setErrorMessage(null);
 
     try {
-      const res = await (authClient.signUp.email as any)({
+      const res = await authClient.signUp.email({
         name: name.trim(),
         email: email.trim(),
         password,
-        role,
         callbackURL: "/dashboard",
       });
 
@@ -218,26 +216,6 @@ export function SignupForm({
                 </div>
                 <FieldDescription>
                   Must be at least 8 characters long.
-                </FieldDescription>
-              </Field>
-
-              <Field>
-                <FieldLabel htmlFor="role">Role / Position</FieldLabel>
-                <select
-                  id="role"
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 dark:bg-background"
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  disabled={isBusy}
-                >
-                  <option value="employee" className="dark:bg-zinc-900">Employee</option>
-                  <option value="hr_manager" className="dark:bg-zinc-900">HR Manager</option>
-                  <option value="hr_payroll_user" className="dark:bg-zinc-900">HR Payroll User</option>
-                  <option value="hr_payroll_manager" className="dark:bg-zinc-900">HR Payroll Manager</option>
-                  <option value="admin" className="dark:bg-zinc-900">Administrator</option>
-                </select>
-                <FieldDescription>
-                  Your role determines your workspace access and permissions.
                 </FieldDescription>
               </Field>
 

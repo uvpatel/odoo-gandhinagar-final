@@ -1,4 +1,4 @@
-import { db } from "@/db/index";
+import { db, type Database } from "@/db/index";
 import {
   payruns,
   payslips,
@@ -30,6 +30,8 @@ import { validatePayrollEmployee } from "@/server/services/payroll/payroll-valid
 import { getAttendanceByEmployeeAndPeriod } from "@/db/queries/attendance";
 import { getApprovedLeaveForPeriod } from "@/db/queries/time-off";
 import { getSalaryStructureById } from "@/db/queries/payroll";
+import { generatePayslipPdf } from "@/server/services/payroll/pdf-generator";
+export { generatePayslipPdf } from "@/server/services/payroll/pdf-generator";
 
 const resend = new Resend(process.env.RESEND_API_KEY || "re_dummy");
 
@@ -39,9 +41,10 @@ const resend = new Resend(process.env.RESEND_API_KEY || "re_dummy");
 export async function getEligibleEmployeesForPeriod(
   periodStart: string,
   periodEnd: string,
-  targetStructureId?: string
+  targetStructureId?: string,
+  database: Database = db
 ): Promise<EligibleEmployee[]> {
-  const activeEmployees = await db
+  const activeEmployees = await database
     .select({
       id: employees.id,
       employeeNumber: employees.employeeNumber,
@@ -66,7 +69,7 @@ export async function getEligibleEmployeesForPeriod(
   if (activeEmployees.length === 0) return [];
 
   // Fetch all active contracts overlapping this period
-  const activeContracts = await db
+  const activeContracts = await database
     .select({
       id: contracts.id,
       employeeId: contracts.employeeId,
@@ -83,8 +86,8 @@ export async function getEligibleEmployeesForPeriod(
     .where(
       and(
         eq(contracts.status, "active"),
-        sql`${contracts.startDate} <= ${periodEnd}`,
-        or(isNull(contracts.endDate), sql`${contracts.endDate} >= ${periodStart}`)
+        sql`${contracts.startDate} <= ${periodStart}`,
+        or(isNull(contracts.endDate), sql`${contracts.endDate} >= ${periodEnd}`)
       )
     );
 
@@ -95,6 +98,10 @@ export async function getEligibleEmployeesForPeriod(
     contractMap.set(c.employeeId, list);
   }
 
+  const duplicates = await database.select({ employeeId: payslips.employeeId }).from(payslips).where(and(
+    sql`${payslips.status} <> 'cancelled'`, sql`${payslips.periodStart} <= ${periodEnd}`, sql`${payslips.periodEnd} >= ${periodStart}`
+  ));
+  const duplicateIds = new Set(duplicates.map((s) => s.employeeId));
   const result: EligibleEmployee[] = activeEmployees.map((emp) => {
     const empContracts = contractMap.get(emp.id) || [];
 
@@ -159,19 +166,16 @@ export async function getEligibleEmployeesForPeriod(
       warningMessage = `Contract specifies structure '${c.salaryStructureName}', different from payrun structure`;
     }
 
+    if (targetStructureId && c.salaryStructureId && c.salaryStructureId !== targetStructureId) {
+      eligibility = "ineligible";
+      warningMessage = "Contract salary structure does not match selected structure";
+    }
+    if (duplicateIds.has(emp.id)) {
+      eligibility = "ineligible";
+      warningMessage = "An overlapping payslip already exists";
+    }
     return {
-      id: emp.id,
-      employeeNumber: emp.employeeNumber,
-      firstName: emp.firstName,
-      lastName: emp.lastName,
-      fullName: emp.fullName,
-      workEmail: emp.workEmail,
-      departmentId: emp.departmentId,
-      departmentName: emp.departmentName,
-      jobPositionId: emp.jobPositionId,
-      jobTitle: emp.jobTitle,
-      bankAccountNumber: emp.bankAccountNumber,
-      bankName: emp.bankName,
+      ...emp,
       contract: {
         id: c.id,
         contractNumber: c.contractNumber,
@@ -197,56 +201,26 @@ export async function createPayrunTransaction(
   input: CreatePayrunInput,
   userId: string
 ) {
-  // 1. Insert payrun record with status "draft"
-  const [payrun] = await db
-    .insert(payruns)
-    .values({
-      name: input.name.trim(),
-      salaryStructureId: input.salaryStructureId,
-      periodStart: input.periodStart,
-      periodEnd: input.periodEnd,
-      status: "draft",
-      createdBy: userId,
-    })
-    .returning();
-
-  // 2. Resolve contract for each selected employee
-  const eligibleEmployees = await getEligibleEmployeesForPeriod(
-    input.periodStart,
-    input.periodEnd,
-    input.salaryStructureId
-  );
-
-  const selectedEligible = eligibleEmployees.filter((e) =>
-    input.employeeIds.includes(e.id)
-  );
-
-  // 3. Create initial draft payslips
-  for (const emp of selectedEligible) {
-    if (!emp.contract) continue;
-
-    const payslipNum = `SLIP-${payrun.id.slice(0, 4).toUpperCase()}-${emp.employeeNumber}`;
-    const wageStr = emp.contract.wage.toFixed(2);
-
-    await db.insert(payslips).values({
-      payslipNumber: payslipNum,
-      payrunId: payrun.id,
-      employeeId: emp.id,
-      contractId: emp.contract.id,
-      salaryStructureId: emp.contract.salaryStructureId || input.salaryStructureId,
-      periodStart: input.periodStart,
-      periodEnd: input.periodEnd,
-      workedDays: "0",
-      workedHours: "0",
-      basicAmount: wageStr,
-      grossAmount: "0",
-      deductionAmount: "0",
-      netAmount: "0",
-      status: "draft",
+  return db.transaction(async (tx) => {
+    // Serializes creation across batches, including periods that overlap without identical dates.
+    await tx.execute(sql`select pg_advisory_xact_lock(360001)`);
+    const structure = await getSalaryStructureById(input.salaryStructureId, tx);
+    if (!structure?.isActive || !structure.rules.some((r) => r.rule?.isActive)) throw new Error("Select an active structure with active rules");
+    if (!input.employeeIds.length || new Set(input.employeeIds).size !== input.employeeIds.length) throw new Error("Select unique employees");
+    const eligible = await getEligibleEmployeesForPeriod(input.periodStart, input.periodEnd, input.salaryStructureId, tx);
+    const selected = input.employeeIds.map((id) => {
+      const employee = eligible.find((e) => e.id === id);
+      if (!employee?.contract || employee.eligibility === "ineligible") throw new Error(`Employee ${id} is not eligible: ${employee?.warningMessage ?? "not active"}`);
+      return { employee, contract: employee.contract };
     });
-  }
-
-  return payrun;
+    const [payrun] = await tx.insert(payruns).values({ name: input.name.trim(), salaryStructureId: input.salaryStructureId,
+      periodStart: input.periodStart, periodEnd: input.periodEnd, status: "draft", createdBy: userId }).returning();
+    await tx.insert(payslips).values(selected.map(({employee, contract}) => ({
+      payslipNumber: `SLIP-${crypto.randomUUID()}`, payrunId: payrun.id, employeeId: employee.id, contractId: contract.id,
+      salaryStructureId: input.salaryStructureId, periodStart: input.periodStart, periodEnd: input.periodEnd, status: "draft" as const,
+    })));
+    return payrun;
+  });
 }
 
 // ============================================================================
@@ -332,7 +306,6 @@ export async function getPayrunsList(filters?: {
 // 4. GET PAYRUN DETAIL
 // ============================================================================
 export async function getPayrunDetail(payrunId: string): Promise<PayrunDetail | null> {
-  const [payrunHeader] = await getPayrunsList();
   const matched = (await getPayrunsList()).find((p) => p.id === payrunId);
 
   if (!matched) return null;
@@ -442,14 +415,17 @@ export async function getPayrunDetail(payrunId: string): Promise<PayrunDetail | 
 // 5. COMPUTE PAYRUN (COMPUTATION ENGINE)
 // ============================================================================
 export async function computePayrunExecution(payrunId: string) {
+  return db.transaction(async (db) => {
+    await db.execute(sql`select pg_advisory_xact_lock(360001)`);
+
   const [payrun] = await db
     .select()
     .from(payruns)
     .where(eq(payruns.id, payrunId))
-    .limit(1);
+    .limit(1).for("update");
 
   if (!payrun) throw new Error(`Payrun not found`);
-  if (payrun.status === "validated" || payrun.status === "paid") {
+  if (payrun.status !== "draft" && payrun.status !== "computed") {
     throw new Error(`Cannot recompute a payrun with status '${payrun.status}'`);
   }
 
@@ -458,6 +434,7 @@ export async function computePayrunExecution(payrunId: string) {
     .from(payslips)
     .where(eq(payslips.payrunId, payrunId));
 
+  if (!runSlips.length) throw new Error("Cannot compute an empty payrun");
   for (const slip of runSlips) {
     // 1. Get employee
     const [emp] = await db
@@ -466,36 +443,37 @@ export async function computePayrunExecution(payrunId: string) {
       .where(eq(employees.id, slip.employeeId))
       .limit(1);
 
-    if (!emp) continue;
+    if (!emp) throw new Error("Employee not found");
 
     // 2. Get applicable contract
-    const [contract] = await db
+    const matchingContracts = await db
       .select()
       .from(contracts)
       .where(
         and(
           eq(contracts.employeeId, slip.employeeId),
           eq(contracts.status, "active"),
-          sql`${contracts.startDate} <= ${payrun.periodEnd}`,
-          or(isNull(contracts.endDate), sql`${contracts.endDate} >= ${payrun.periodStart}`)
+          sql`${contracts.startDate} <= ${payrun.periodStart}`,
+          or(isNull(contracts.endDate), sql`${contracts.endDate} >= ${payrun.periodEnd}`)
         )
       )
-      .limit(1);
+      ;
+    const contract = matchingContracts.length === 1 ? matchingContracts[0] : null;
 
     // 3. Load structure & rules
     const structureId =
-      contract?.salaryStructureId || slip.salaryStructureId || payrun.salaryStructureId;
-    const structure = await getSalaryStructureById(structureId);
+      payrun.salaryStructureId;
+    const structure = await getSalaryStructureById(structureId, db);
 
     const rules = (structure?.rules
-      ?.map((r) => r.rule)
-      .filter((r): r is NonNullable<typeof r> => Boolean(r)) || []) as any[];
+      ?.map((r) => r.rule ? { ...r.rule, sequence: r.sequence } : null)
+      .filter((r): r is NonNullable<typeof r> => Boolean(r)) || []);
 
     // 4. Attendance aggregation
     const attendances = await getAttendanceByEmployeeAndPeriod(
       slip.employeeId,
       payrun.periodStart,
-      payrun.periodEnd
+      payrun.periodEnd, db
     );
 
     const totalWorkedMinutes = attendances.reduce(
@@ -514,7 +492,7 @@ export async function computePayrunExecution(payrunId: string) {
     const approvedLeaves = await getApprovedLeaveForPeriod(
       slip.employeeId,
       payrun.periodStart,
-      payrun.periodEnd
+      payrun.periodEnd, db
     );
 
     const paidDays = approvedLeaves
@@ -525,9 +503,9 @@ export async function computePayrunExecution(payrunId: string) {
       .reduce((sum: number, l) => sum + Number(l.duration), 0);
 
     // 6. Build Payroll Context
-    const context: PayrollContext = {
+    const context = contract ? {
       employee: emp,
-      contract: contract || ({} as any),
+      contract,
       period: {
         start: payrun.periodStart,
         end: payrun.periodEnd,
@@ -542,10 +520,17 @@ export async function computePayrunExecution(payrunId: string) {
         unpaidDays,
       },
       results: {},
-    };
+    } satisfies PayrollContext : null;
 
     // 7. Execute Salary Engine
-    const computation = contract ? executeSalaryEngine(rules, context) : null;
+    let computation = null;
+    let calculationError: string | null = null;
+    try {
+      if (!context) throw new Error("Missing or ambiguous contract covering the full period");
+      if (!structure?.isActive) throw new Error("Salary structure is inactive or missing");
+      if (contract?.salaryStructureId && contract.salaryStructureId !== structureId) throw new Error("Contract structure mismatch");
+      computation = executeSalaryEngine(rules, context);
+    } catch (error) { calculationError = error instanceof Error ? error.message : "Calculation failed"; }
 
     // 8. Delete old lines and warnings for this slip
     await db.delete(payslipLines).where(eq(payslipLines.payslipId, slip.id));
@@ -589,6 +574,7 @@ export async function computePayrunExecution(payrunId: string) {
 
     // 11. Generate and persist warnings
     const warnings = validatePayrollEmployee(emp, contract || null, computation, slip.id);
+    if (calculationError) warnings.push({ payslipId: slip.id, code: "CALCULATION_FAILED", severity: "error", message: calculationError, resolved: false });
     if (warnings.length > 0) {
       await db.insert(payslipWarnings).values(warnings);
     }
@@ -606,23 +592,30 @@ export async function computePayrunExecution(payrunId: string) {
     .returning();
 
   return updatedPayrun;
+  });
 }
 
 // ============================================================================
 // 6. VALIDATE PAYRUN (BLOCKING ERROR CHECKS)
 // ============================================================================
 export async function validatePayrunExecution(payrunId: string) {
+  return db.transaction(async (db) => {
+    await db.execute(sql`select pg_advisory_xact_lock(360001)`);
+
   const [payrun] = await db
     .select()
     .from(payruns)
     .where(eq(payruns.id, payrunId))
-    .limit(1);
+    .limit(1).for("update");
 
   if (!payrun) throw new Error("Payrun not found");
+  if (payrun.status === "validated") return payrun;
   if (payrun.status !== "computed") {
     throw new Error("Only computed payruns can be validated");
   }
 
+  const slips = await db.select().from(payslips).where(eq(payslips.payrunId, payrunId));
+  if (!slips.length || slips.some((s) => s.status !== "computed" || !s.computedAt)) throw new Error("Every payslip must be computed before validation");
   // Check for blocking errors
   const blockingErrors = await db
     .select({
@@ -674,19 +667,24 @@ export async function validatePayrunExecution(payrunId: string) {
     .where(eq(payslips.payrunId, payrunId));
 
   return validated;
+  });
 }
 
 // ============================================================================
 // 7. MARK PAID (FINALIZATION)
 // ============================================================================
 export async function markPayrunPaidExecution(payrunId: string) {
+  return db.transaction(async (db) => {
+    await db.execute(sql`select pg_advisory_xact_lock(360001)`);
+
   const [payrun] = await db
     .select()
     .from(payruns)
     .where(eq(payruns.id, payrunId))
-    .limit(1);
+    .limit(1).for("update");
 
   if (!payrun) throw new Error("Payrun not found");
+  if (payrun.status === "paid") return payrun;
   if (payrun.status !== "validated") {
     throw new Error("Only validated payruns can be marked as paid");
   }
@@ -715,6 +713,7 @@ export async function markPayrunPaidExecution(payrunId: string) {
     .where(eq(payslips.payrunId, payrunId));
 
   return paidRun;
+  });
 }
 
 // ============================================================================
@@ -766,6 +765,22 @@ export async function sendPayrunPayslipsExecution(payrunId: string) {
     }
 
     try {
+      const fullDetail = await getPayslipDetail(s.id);
+      let attachments: Array<{ filename: string; content: Buffer }> | undefined = undefined;
+      if (fullDetail) {
+        try {
+          const pdfBytes = await generatePayslipPdf(fullDetail);
+          attachments = [
+            {
+              filename: `payslip-${s.payslipNumber}.pdf`,
+              content: Buffer.from(pdfBytes),
+            },
+          ];
+        } catch (pdfErr) {
+          console.warn(`Could not generate PDF attachment for payslip ${s.payslipNumber}:`, pdfErr);
+        }
+      }
+
       await resend.emails.send({
         from: "PeoplePay360 <payroll@resend.dev>",
         to: [s.workEmail],
@@ -777,7 +792,7 @@ export async function sendPayrunPayslipsExecution(payrunId: string) {
               <p style="margin: 4px 0 0 0; color: #64748b; font-size: 14px;">Confidential Payslip Notice</p>
             </div>
             <p>Dear <strong>${s.firstName} ${s.lastName}</strong> (${s.employeeNumber}),</p>
-            <p>Your payslip for period <strong>${payrun.periodStart}</strong> to <strong>${payrun.periodEnd}</strong> has been generated and approved.</p>
+            <p>Your payslip for period <strong>${payrun.periodStart}</strong> to <strong>${payrun.periodEnd}</strong> has been generated and approved. Your itemized PDF payslip is attached.</p>
             <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 16px; margin: 16px 0;">
               <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
                 <tr>
@@ -807,6 +822,7 @@ export async function sendPayrunPayslipsExecution(payrunId: string) {
             </p>
           </div>
         `,
+        attachments,
       });
       sentCount++;
     } catch (err) {
@@ -1066,6 +1082,19 @@ export async function sendSinglePayslipExecution(payslipId: string) {
   if (!slip) throw new Error("Payslip not found");
   if (!slip.workEmail) throw new Error("Employee does not have an email address configured");
 
+  let attachments: Array<{ filename: string; content: Buffer }> | undefined = undefined;
+  try {
+    const pdfBytes = await generatePayslipPdf(slip);
+    attachments = [
+      {
+        filename: `payslip-${slip.payslipNumber}.pdf`,
+        content: Buffer.from(pdfBytes),
+      },
+    ];
+  } catch (pdfErr) {
+    console.warn(`Could not generate PDF attachment for payslip ${slip.payslipNumber}:`, pdfErr);
+  }
+
   await resend.emails.send({
     from: "PeoplePay360 <payroll@resend.dev>",
     to: [slip.workEmail],
@@ -1077,7 +1106,7 @@ export async function sendSinglePayslipExecution(payslipId: string) {
           <p style="margin: 4px 0 0 0; color: #64748b; font-size: 14px;">Confidential Payslip Notice</p>
         </div>
         <p>Dear <strong>${slip.employeeName}</strong> (${slip.employeeNumber}),</p>
-        <p>Your itemized payslip for period <strong>${slip.periodStart}</strong> to <strong>${slip.periodEnd}</strong> is now available.</p>
+        <p>Your itemized payslip for period <strong>${slip.periodStart}</strong> to <strong>${slip.periodEnd}</strong> is now available. Your official PDF payslip is attached.</p>
         <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 16px; margin: 16px 0;">
           <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
             <tr>
@@ -1107,6 +1136,7 @@ export async function sendSinglePayslipExecution(payslipId: string) {
         </p>
       </div>
     `,
+    attachments,
   });
 
   return { success: true, email: slip.workEmail };
@@ -1398,6 +1428,10 @@ export async function getPayrollDashboardMetrics(filters?: {
     payslipConditions.push(eq(employees.departmentId, filters.departmentId));
   }
 
+  if (filters?.employeeType && filters.employeeType !== "all") {
+    payslipConditions.push(eq(employees.employeeType, filters.employeeType as any));
+  }
+
   if (filters?.startDate) {
     payslipConditions.push(sql`${payslips.periodStart} >= ${filters.startDate}`);
   }
@@ -1436,10 +1470,11 @@ export async function getPayrollDashboardMetrics(filters?: {
     .from(departments)
     .leftJoin(employees, eq(departments.id, employees.departmentId))
     .leftJoin(payslips, eq(employees.id, payslips.employeeId))
+    .where(payslipConditions.length > 0 ? and(...payslipConditions) : undefined)
     .groupBy(departments.id)
     .orderBy(desc(sql`coalesce(sum(${payslips.netAmount}), 0)`));
 
-  // 3. Monthly Trends (last 6 months)
+  // 3. Monthly Trends (most recent 6 months, chronological)
   const monthlyTrendsRaw = await db
     .select({
       month: sql<string>`to_char(${payruns.periodStart}, 'Mon YYYY')`,
@@ -1452,8 +1487,10 @@ export async function getPayrollDashboardMetrics(filters?: {
     .from(payruns)
     .leftJoin(payslips, eq(payruns.id, payslips.payrunId))
     .groupBy(sql`to_char(${payruns.periodStart}, 'Mon YYYY')`, sql`to_char(${payruns.periodStart}, 'YYYY-MM')`)
-    .orderBy(asc(sql`to_char(${payruns.periodStart}, 'YYYY-MM')`))
+    .orderBy(desc(sql`to_char(${payruns.periodStart}, 'YYYY-MM')`))
     .limit(6);
+
+  const sortedTrends = [...monthlyTrendsRaw].reverse();
 
   // 4. Operational Alerts
   const alerts: PayrollDashboardData["operationalAlerts"] = [];
@@ -1497,7 +1534,9 @@ export async function getPayrollDashboardMetrics(filters?: {
   const [attRes] = await db
     .select({
       totalChecks: sql<number>`count(*)::int`,
+      presentChecks: sql<number>`count(case when ${attendance.status} = 'present' or ${attendance.status} = 'overtime' then 1 end)::int`,
       lateChecks: sql<number>`count(case when ${attendance.status} = 'late' then 1 end)::int`,
+      absentChecks: sql<number>`count(case when ${attendance.status} = 'absent' then 1 end)::int`,
       overtimeMins: sql<number>`coalesce(sum(${attendance.overtimeMinutes}), 0)::int`,
     })
     .from(attendance);
@@ -1509,9 +1548,11 @@ export async function getPayrollDashboardMetrics(filters?: {
     })
     .from(timeOffRequests);
 
-  const totalChecks = attRes?.totalChecks || 1;
+  const totalChecks = attRes?.totalChecks || 0;
+  const presentChecks = attRes?.presentChecks || 0;
   const lateChecks = attRes?.lateChecks || 0;
-  const coverageRate = Math.min(100, Math.round(((totalChecks - lateChecks) / totalChecks) * 100));
+  const absentChecks = attRes?.absentChecks || 0;
+  const coverageRate = totalChecks > 0 ? Math.min(100, Math.round((presentChecks / totalChecks) * 100)) : 100;
 
   return {
     kpis: {
@@ -1531,7 +1572,7 @@ export async function getPayrollDashboardMetrics(filters?: {
       deductionTotal: Math.round((d.deductionTotal || 0) * 100) / 100,
       netTotal: Math.round((d.netTotal || 0) * 100) / 100,
     })),
-    monthlyTrends: monthlyTrendsRaw.map((m) => ({
+    monthlyTrends: sortedTrends.map((m) => ({
       month: m.month,
       gross: Math.round(m.gross * 100) / 100,
       net: Math.round(m.net * 100) / 100,
@@ -1540,9 +1581,9 @@ export async function getPayrollDashboardMetrics(filters?: {
     })),
     operationalAlerts: alerts,
     attendanceOverview: {
-      presentCount: totalChecks - lateChecks,
+      presentCount: presentChecks,
       lateCount: lateChecks,
-      absentCount: 0,
+      absentCount: absentChecks,
       overtimeHours: Math.round(((attRes?.overtimeMins || 0) / 60) * 10) / 10,
       coverageRate,
     },

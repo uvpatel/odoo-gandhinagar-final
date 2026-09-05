@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthSession, getCurrentEmployee, AuthorizationError } from "@/lib/auth/authorization";
 import { normalizeRole, hasPermission } from "@/lib/auth/permissions";
-import { getPayslipDetail, generatePayslipPrintHtml } from "@/features/payroll/services/payroll.service";
+import { getPayslipDetail } from "@/features/payroll/services/payroll.service";
+import { generatePayslipPdf } from "@/server/services/payroll/pdf-generator";
 
 export async function GET(
   request: NextRequest,
@@ -40,13 +41,14 @@ export async function GET(
       }
     }
 
-    const html = generatePayslipPrintHtml(slip);
+    const pdfBytes = await generatePayslipPdf(slip);
 
-    return new NextResponse(html, {
+    return new NextResponse(Buffer.from(pdfBytes), {
       status: 200,
       headers: {
-        "Content-Type": "text/html; charset=utf-8",
-        "Content-Disposition": `inline; filename="payslip-${slip.payslipNumber}.html"`,
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `inline; filename="payslip-${slip.payslipNumber}.pdf"`,
+        "Content-Length": String(pdfBytes.byteLength),
       },
     });
   } catch (error: any) {

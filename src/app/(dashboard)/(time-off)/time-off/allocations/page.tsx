@@ -1,7 +1,10 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import * as React from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCan } from "@/hooks/use-permissions";
 import {
   Table,
@@ -78,8 +81,10 @@ const statusLabels: Record<string, string> = {
   expired: "Expired",
 };
 
-export default function TimeOffAllocationsPage() {
+function TimeOffAllocationsContent() {
   const { can } = useCan();
+  const searchParams = useSearchParams();
+  const [employeeFilter, setEmployeeFilter] = React.useState<string | null>(searchParams.get("employeeId"));
   const [allocationsList, setAllocationsList] = React.useState<AllocationItem[]>([]);
   const [employeesList, setEmployeesList] = React.useState<EmployeeOption[]>([]);
   const [typesList, setTypesList] = React.useState<TimeOffTypeOption[]>([]);
@@ -211,10 +216,13 @@ export default function TimeOffAllocationsPage() {
     }
   };
 
-  const filteredAllocations = allocationsList.filter((a) =>
-    a.employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    a.timeOffTypeName.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredAllocations = allocationsList.filter((a) => {
+    const matchesSearch =
+      a.employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      a.timeOffTypeName.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesEmployee = !employeeFilter || a.employeeId === employeeFilter;
+    return matchesSearch && matchesEmployee;
+  });
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -241,6 +249,15 @@ export default function TimeOffAllocationsPage() {
           </Button>
         </Link>
       </div>
+
+      {employeeFilter && (
+        <div className="flex items-center justify-between rounded-lg bg-blue-500/10 border border-blue-500/30 px-4 py-2.5 text-xs text-blue-700 dark:text-blue-300">
+          <span>Filtering time off allocations for selected employee</span>
+          <Button variant="ghost" size="sm" onClick={() => setEmployeeFilter(null)} className="h-7 text-xs">
+            Clear Filter
+          </Button>
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -546,6 +563,14 @@ export default function TimeOffAllocationsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function TimeOffAllocationsPage() {
+  return (
+    <React.Suspense fallback={<div className="p-8 text-center text-xs text-muted-foreground">Loading allocations...</div>}>
+      <TimeOffAllocationsContent />
+    </React.Suspense>
   );
 }
 

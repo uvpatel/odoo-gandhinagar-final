@@ -27,10 +27,10 @@ export async function resolveContractForPeriod(
     where: {
       employeeId,
       status: "active",
-      startDate: { lte: periodEnd },
+      startDate: { lte: periodStart },
       OR: [
         { endDate: { isNull: true } },
-        { endDate: { gte: periodStart } },
+        { endDate: { gte: periodEnd } },
       ],
     },
     with: {

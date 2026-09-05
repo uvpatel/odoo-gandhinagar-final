@@ -1,3 +1,4 @@
+import { transitionLeave } from "@/server/services/time-off/approval";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/index";
 import { timeOffRequests } from "@/db/schema";
@@ -12,16 +13,7 @@ export async function POST(
     const { requestId } = await params;
     const session = await requirePermission("timeOffRequest", "approve", request.headers);
 
-    const [updated] = await db
-      .update(timeOffRequests)
-      .set({
-        status: "approved",
-        approvedBy: session.user.id,
-        approvedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(timeOffRequests.id, requestId))
-      .returning();
+    const updated = await transitionLeave(requestId, "approved", session.user.id);
 
     if (!updated) {
       return NextResponse.json({ error: "Time-off request not found" }, { status: 404 });

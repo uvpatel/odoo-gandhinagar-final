@@ -1,93 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/db/index";
-import { workingSchedules } from "@/db/schema";
-import { getAuthSession, requirePermission, AuthorizationError } from "@/lib/auth/authorization";
+import { z } from "zod";
+import { db } from "@/db";
+import { workingSchedules, workingScheduleLines } from "@/db/schema";
+import { requirePermission, AuthorizationError } from "@/lib/auth/authorization";
 import { eq } from "drizzle-orm";
-
+import { scheduleLineSchema, weeklyHours } from "@/server/domain/hr";
+const schema = z.object({ id: z.string().uuid().optional(), name: z.string().trim().min(1).max(120), scheduleType: z.string().max(30).default("standard"), timezone: z.string().refine((v) => { try { new Intl.DateTimeFormat("en", { timeZone: v }); return true; } catch { return false; } }, "Invalid timezone"), isActive: z.boolean().default(true), lines: z.array(scheduleLineSchema).min(1).max(21) });
+function failure(error: unknown) { return NextResponse.json({ error: error instanceof Error ? error.message : "Schedule operation failed" }, { status: error instanceof AuthorizationError ? error.status : 400 }); }
 export async function GET(request: NextRequest) {
   try {
-    const session = await getAuthSession(request.headers);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const data = await db.select().from(workingSchedules);
-    return NextResponse.json({ data });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Failed to fetch working schedules" }, { status: 500 });
-  }
+    await requirePermission("workingSchedule", "read", request.headers);
+    const [schedules, lines] = await Promise.all([db.select().from(workingSchedules), db.select().from(workingScheduleLines)]);
+    return NextResponse.json({ data: schedules.map((s) => { const ownLines = lines.filter((l) => l.scheduleId === s.id); return { ...s, lines: ownLines, weeklyHours: weeklyHours(ownLines) }; }) });
+  } catch (error) { return failure(error); }
 }
-
-export async function POST(request: NextRequest) {
+async function save(request: NextRequest, update: boolean) {
   try {
-    await requirePermission("workingSchedule", "create", request.headers);
-    const body = await request.json();
-
-    if (!body.name) {
-      return NextResponse.json({ error: "Schedule name is required" }, { status: 400 });
-    }
-
-    const [newSchedule] = await db
-      .insert(workingSchedules)
-      .values({
-        name: body.name.trim(),
-        scheduleType: body.scheduleType || "standard",
-        timezone: body.timezone || "Asia/Kolkata",
-        isActive: body.isActive ?? true,
-      })
-      .returning();
-
-    return NextResponse.json({ data: newSchedule }, { status: 201 });
-  } catch (error: any) {
-    const status = error.status || (error instanceof AuthorizationError ? error.status : 500);
-    return NextResponse.json({ error: error.message || "Failed to create working schedule" }, { status });
-  }
+    await requirePermission("workingSchedule", update ? "update" : "create", request.headers);
+    const { id, lines, ...values } = schema.parse(await request.json());
+    weeklyHours(lines);
+    if (update && !id) throw new Error("Schedule ID required");
+    const data = await db.transaction(async (tx) => {
+      const [schedule] = update && id ? await tx.update(workingSchedules).set({ ...values, updatedAt: new Date() }).where(eq(workingSchedules.id, id)).returning() : await tx.insert(workingSchedules).values(values).returning();
+      if (!schedule) throw new AuthorizationError("Schedule not found", 404);
+      await tx.delete(workingScheduleLines).where(eq(workingScheduleLines.scheduleId, schedule.id));
+      await tx.insert(workingScheduleLines).values(lines.map((line) => ({ ...line, scheduleId: schedule.id })));
+      return { ...schedule, lines, weeklyHours: weeklyHours(lines) };
+    });
+    return NextResponse.json({ data }, { status: update ? 200 : 201 });
+  } catch (error) { return failure(error); }
 }
-
-export async function PUT(request: NextRequest) {
-  try {
-    await requirePermission("workingSchedule", "update", request.headers);
-    const body = await request.json();
-
-    if (!body.id) {
-      return NextResponse.json({ error: "Schedule ID is required" }, { status: 400 });
-    }
-
-    const [updated] = await db
-      .update(workingSchedules)
-      .set({
-        name: body.name?.trim(),
-        scheduleType: body.scheduleType,
-        timezone: body.timezone,
-        isActive: body.isActive,
-        updatedAt: new Date(),
-      })
-      .where(eq(workingSchedules.id, body.id))
-      .returning();
-
-    return NextResponse.json({ data: updated });
-  } catch (error: any) {
-    const status = error.status || (error instanceof AuthorizationError ? error.status : 500);
-    return NextResponse.json({ error: error.message || "Failed to update working schedule" }, { status });
-  }
-}
-
+export async function POST(request: NextRequest) { return save(request, false); }
+export async function PUT(request: NextRequest) { return save(request, true); }
 export async function DELETE(request: NextRequest) {
   try {
     await requirePermission("workingSchedule", "delete", request.headers);
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get("id");
-
-    if (!id) {
-      return NextResponse.json({ error: "Schedule ID is required" }, { status: 400 });
-    }
-
-    await db.delete(workingSchedules).where(eq(workingSchedules.id, id));
-    return NextResponse.json({ message: "Working schedule deleted successfully" });
-  } catch (error: any) {
-    const status = error.status || (error instanceof AuthorizationError ? error.status : 500);
-    return NextResponse.json({ error: error.message || "Failed to delete working schedule" }, { status });
-  }
+    const id = z.string().uuid().parse(request.nextUrl.searchParams.get("id"));
+    await db.update(workingSchedules).set({ isActive: false }).where(eq(workingSchedules.id, id));
+    return NextResponse.json({ message: "Schedule archived" });
+  } catch (error) { return failure(error); }
 }
-
-

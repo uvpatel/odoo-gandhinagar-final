@@ -3,8 +3,8 @@ import { z } from "zod";
 export const payrunScopeSchema = z
   .object({
     salaryStructureId: z.string().uuid("Please select a valid salary structure"),
-    periodStart: z.string().min(10, "Period start date is required"),
-    periodEnd: z.string().min(10, "Period end date is required"),
+    periodStart: z.iso.date(),
+    periodEnd: z.iso.date(),
     name: z.string().optional(),
   })
   .refine(
@@ -25,8 +25,8 @@ export const createPayrunSchema = z
   .object({
     name: z.string().min(3, "Payrun name must be at least 3 characters"),
     salaryStructureId: z.string().uuid("Please select a valid salary structure"),
-    periodStart: z.string().min(10, "Period start date is required"),
-    periodEnd: z.string().min(10, "Period end date is required"),
+    periodStart: z.iso.date(),
+    periodEnd: z.iso.date(),
     employeeIds: z
       .array(z.string().uuid())
       .min(1, "You must select at least one employee for the payrun"),

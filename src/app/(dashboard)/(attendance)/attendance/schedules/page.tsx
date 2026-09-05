@@ -36,6 +36,8 @@ import {
 import { toast } from "sonner";
 
 type WorkingScheduleItem = {
+  weeklyHours: number;
+  lines: { dayOfWeek: number; startTime: string; endTime: string; breakMinutes: number }[];
   id: string;
   name: string;
   scheduleType: string;
@@ -107,10 +109,10 @@ export default function AttendanceSchedulesPage() {
       name: schedule.name,
       scheduleType: schedule.scheduleType || "standard",
       timezone: schedule.timezone || "Asia/Kolkata",
-      workDaysCount: "5",
-      startTime: "09:00",
-      endTime: "18:00",
-      breakMinutes: "60",
+      workDaysCount: String(schedule.lines.length),
+      startTime: schedule.lines[0]?.startTime.slice(0, 5) || "09:00",
+      endTime: schedule.lines[0]?.endTime.slice(0, 5) || "18:00",
+      breakMinutes: String(schedule.lines[0]?.breakMinutes || 0),
       isActive: schedule.isActive,
     });
     setIsModalOpen(true);
@@ -136,6 +138,7 @@ export default function AttendanceSchedulesPage() {
             scheduleType: formData.scheduleType,
             timezone: formData.timezone,
             isActive: formData.isActive,
+            lines: Array.from({ length: Number(formData.workDaysCount) }, (_, i) => ({ dayOfWeek: (i + 1) % 7, startTime: formData.startTime, endTime: formData.endTime, breakMinutes: Number(formData.breakMinutes) })),
           }),
         });
         const json = await res.json();
@@ -151,6 +154,7 @@ export default function AttendanceSchedulesPage() {
             scheduleType: formData.scheduleType,
             timezone: formData.timezone,
             isActive: formData.isActive,
+            lines: Array.from({ length: Number(formData.workDaysCount) }, (_, i) => ({ dayOfWeek: (i + 1) % 7, startTime: formData.startTime, endTime: formData.endTime, breakMinutes: Number(formData.breakMinutes) })),
           }),
         });
         const json = await res.json();
@@ -315,12 +319,12 @@ export default function AttendanceSchedulesPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-slate-600 dark:text-slate-300 text-sm">
-                      5 Days (Mon - Fri)
+                      {item.lines?.length || 0} schedule lines
                     </TableCell>
                     <TableCell className="text-slate-600 dark:text-slate-300 text-sm">
                       <div className="flex items-center gap-1.5">
                         <ClockIcon className="h-3.5 w-3.5 text-blue-500" />
-                        <span>40.0 hrs / week (09:00 - 18:00)</span>
+                        <span>{(Number(item.weeklyHours) || 0).toFixed(1)} hrs / week</span>
                       </div>
                     </TableCell>
                     <TableCell className="text-slate-500 dark:text-slate-400 text-xs font-mono">

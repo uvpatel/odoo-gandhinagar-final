@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/index";
 import { contracts, employees, departments, jobPositions, workingSchedules, salaryStructures } from "@/db/schema";
 import { requirePermission, AuthorizationError, getAuthSession, getCurrentEmployee } from "@/lib/auth/authorization";
-import { eq, sql, desc, ilike, and, or } from "drizzle-orm";
+import { eq, sql, desc, ilike, and, or, isNull } from "drizzle-orm";
 
 export async function GET(request: NextRequest) {
   try {
@@ -101,6 +101,37 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (body.endDate && body.endDate < body.startDate) {
+      return NextResponse.json(
+        { error: "Contract end date cannot precede start date" },
+        { status: 400 }
+      );
+    }
+
+    // If setting to active, prevent overlapping active contracts for this employee
+    if ((body.status || "draft") === "active") {
+      const overlapping = await db
+        .select({ id: contracts.id, contractNumber: contracts.contractNumber })
+        .from(contracts)
+        .where(
+          and(
+            eq(contracts.employeeId, body.employeeId),
+            eq(contracts.status, "active"),
+            sql`${contracts.startDate} <= ${body.endDate || "9999-12-31"}`,
+            or(isNull(contracts.endDate), sql`${contracts.endDate} >= ${body.startDate}`)
+          )
+        );
+
+      if (overlapping.length > 0) {
+        return NextResponse.json(
+          {
+            error: `An active contract (${overlapping[0].contractNumber}) already overlaps this date range for this employee. Terminate or adjust dates of existing contracts first.`,
+          },
+          { status: 409 }
+        );
+      }
+    }
+
     // Generate contract number if not provided (e.g. CON/2026/001)
     let contractNumber = body.contractNumber?.trim();
     if (!contractNumber) {
@@ -148,6 +179,47 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Contract ID is required" }, { status: 400 });
     }
 
+    const [existing] = await db.select().from(contracts).where(eq(contracts.id, body.id)).limit(1);
+    if (!existing) {
+      return NextResponse.json({ error: "Contract not found" }, { status: 404 });
+    }
+
+    const effectiveStartDate = body.startDate !== undefined ? body.startDate : existing.startDate;
+    const effectiveEndDate = body.endDate !== undefined ? body.endDate : existing.endDate;
+    const effectiveStatus = body.status !== undefined ? body.status : existing.status;
+    const effectiveEmployeeId = body.employeeId !== undefined ? body.employeeId : existing.employeeId;
+
+    if (effectiveEndDate && effectiveEndDate < effectiveStartDate) {
+      return NextResponse.json(
+        { error: "Contract end date cannot precede start date" },
+        { status: 400 }
+      );
+    }
+
+    if (effectiveStatus === "active") {
+      const overlapping = await db
+        .select({ id: contracts.id, contractNumber: contracts.contractNumber })
+        .from(contracts)
+        .where(
+          and(
+            eq(contracts.employeeId, effectiveEmployeeId),
+            eq(contracts.status, "active"),
+            sql`${contracts.id} <> ${body.id}`,
+            sql`${contracts.startDate} <= ${effectiveEndDate || "9999-12-31"}`,
+            or(isNull(contracts.endDate), sql`${contracts.endDate} >= ${effectiveStartDate}`)
+          )
+        );
+
+      if (overlapping.length > 0) {
+        return NextResponse.json(
+          {
+            error: `An active contract (${overlapping[0].contractNumber}) already overlaps this date range for this employee.`,
+          },
+          { status: 409 }
+        );
+      }
+    }
+
     const [updatedContract] = await db
       .update(contracts)
       .set({
@@ -166,10 +238,6 @@ export async function PUT(request: NextRequest) {
       })
       .where(eq(contracts.id, body.id))
       .returning();
-
-    if (!updatedContract) {
-      return NextResponse.json({ error: "Contract not found" }, { status: 404 });
-    }
 
     return NextResponse.json({ data: updatedContract });
   } catch (error: any) {

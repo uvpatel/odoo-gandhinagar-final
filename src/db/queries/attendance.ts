@@ -1,3 +1,4 @@
+import { type Database } from "@/db";
 import { db } from "../index";
 import {
   attendance,
@@ -21,8 +22,8 @@ export async function getAttendanceByEmployeeAndPeriod(
   employeeId: string,
   startDate: string,
   endDate: string
-) {
-  return await db.query.attendance.findMany({
+, database: Database = db) {
+  return await database.query.attendance.findMany({
     where: {
       employeeId,
       attendanceDate: {

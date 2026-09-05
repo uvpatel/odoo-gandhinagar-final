@@ -1,7 +1,9 @@
+import { z } from "zod";
+import { dateSchema } from "@/server/domain/hr";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/index";
 import { timeOffAllocations, timeOffTypes, employees, timeOffRequests } from "@/db/schema";
-import { requireAuth, getAuthSession, getCurrentEmployee, AuthorizationError } from "@/lib/auth/authorization";
+import { requirePermission, getAuthSession, getCurrentEmployee, AuthorizationError } from "@/lib/auth/authorization";
 import { eq, sql, desc, and } from "drizzle-orm";
 
 export async function GET(request: NextRequest) {
@@ -51,23 +53,23 @@ export async function GET(request: NextRequest) {
     // Calculate taken days for each allocation from approved requests
     const approvedRequests = await db
       .select({
-        employeeId: timeOffRequests.employeeId,
-        timeOffTypeId: timeOffRequests.timeOffTypeId,
+        allocationId: timeOffRequests.allocationId,
         durationSum: sql<number>`COALESCE(SUM(${timeOffRequests.duration}::numeric), 0)`,
       })
       .from(timeOffRequests)
       .where(eq(timeOffRequests.status, "approved"))
-      .groupBy(timeOffRequests.employeeId, timeOffRequests.timeOffTypeId);
+      .groupBy(timeOffRequests.allocationId);
 
     const takenMap = new Map<string, number>();
     approvedRequests.forEach((req) => {
-      takenMap.set(`${req.employeeId}_${req.timeOffTypeId}`, Number(req.durationSum) || 0);
+      takenMap.set(req.allocationId || "", Number(req.durationSum) || 0);
     });
 
     const dataWithTaken = allocations.map((alloc) => {
-      const taken = takenMap.get(`${alloc.employeeId}_${alloc.timeOffTypeId}`) || 0;
+      const taken = takenMap.get(alloc.id) || 0;
       const allocated = Number(alloc.allocatedAmount) || 0;
-      const remaining = Math.max(0, allocated - taken);
+      const today = new Date().toISOString().slice(0, 10);
+      const remaining = alloc.status === "approved" && alloc.validFrom <= today && (!alloc.validTo || alloc.validTo >= today) ? Math.max(0, allocated - taken) : 0;
 
       return {
         ...alloc,
@@ -79,7 +81,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ data: dataWithTaken });
   } catch (error: any) {
-    const status = error.status || (error instanceof AuthorizationError ? error.status : 500);
+    const status = error instanceof z.ZodError ? 400 : error.status || (error instanceof AuthorizationError ? error.status : 500);
     return NextResponse.json(
       { error: error.message || "Failed to fetch allocations" },
       { status }
@@ -89,8 +91,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await requireAuth(request.headers);
-    const body = await request.json();
+    const session = await requirePermission("timeOffAllocation", "create", request.headers);
+    const body = z.object({ id: z.string().uuid().optional(), employeeId: z.string().uuid().optional(), timeOffTypeId: z.string().uuid().optional(), allocatedAmount: z.coerce.number().positive().optional(), validFrom: dateSchema.optional(), validTo: z.union([dateSchema, z.literal(""), z.null()]).optional(), status: z.enum(["draft", "pending", "approved", "refused", "expired"]).optional() }).parse(await request.json());
+    if (body.validFrom && body.validTo && body.validTo < body.validFrom) throw new AuthorizationError("Invalid allocation validity period", 400);
 
     if (!body.employeeId || !body.timeOffTypeId || !body.allocatedAmount) {
       return NextResponse.json(
@@ -107,15 +110,15 @@ export async function POST(request: NextRequest) {
         allocatedAmount: String(body.allocatedAmount),
         validFrom: body.validFrom || new Date().toISOString().split("T")[0],
         validTo: body.validTo || null,
-        status: body.status || "approved",
-        approvedBy: session.user.id,
-        approvedAt: new Date(),
+        status: body.status || "draft",
+        approvedBy: body.status === "approved" ? session.user.id : null,
+        approvedAt: body.status === "approved" ? new Date() : null,
       })
       .returning();
 
     return NextResponse.json({ data: newAlloc }, { status: 201 });
   } catch (error: any) {
-    const status = error.status || (error instanceof AuthorizationError ? error.status : 500);
+    const status = error instanceof z.ZodError ? 400 : error.status || (error instanceof AuthorizationError ? error.status : 500);
     return NextResponse.json(
       { error: error.message || "Failed to create allocation" },
       { status }
@@ -125,27 +128,36 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    await requireAuth(request.headers);
-    const body = await request.json();
+    const session = await requirePermission("timeOffAllocation", "update", request.headers);
+    const body = z.object({ id: z.string().uuid().optional(), employeeId: z.string().uuid().optional(), timeOffTypeId: z.string().uuid().optional(), allocatedAmount: z.coerce.number().positive().optional(), validFrom: dateSchema.optional(), validTo: z.union([dateSchema, z.literal(""), z.null()]).optional(), status: z.enum(["draft", "pending", "approved", "refused", "expired"]).optional() }).parse(await request.json());
+    if (body.validFrom && body.validTo && body.validTo < body.validFrom) throw new AuthorizationError("Invalid allocation validity period", 400);
 
     if (!body.id) {
       return NextResponse.json({ error: "Allocation ID is required" }, { status: 400 });
     }
 
+    return db.transaction(async (db) => {
+      await db.execute(sql`select pg_advisory_xact_lock(360002)`);
+      const [existing] = await db.select().from(timeOffAllocations).where(eq(timeOffAllocations.id, body.id!)).for("update");
+      if (!existing) throw new AuthorizationError("Allocation not found", 404);
+      if (existing.status === "approved") throw new AuthorizationError("Approved allocations are immutable; create a new allocation", 409);
     const [updated] = await db
       .update(timeOffAllocations)
       .set({
+        approvedBy: body.status === "approved" ? session.user.id : undefined,
+        approvedAt: body.status === "approved" ? new Date() : undefined,
         allocatedAmount: body.allocatedAmount !== undefined ? String(body.allocatedAmount) : undefined,
         status: body.status !== undefined ? body.status : undefined,
         validFrom: body.validFrom !== undefined ? body.validFrom : undefined,
         validTo: body.validTo !== undefined ? body.validTo : undefined,
       })
-      .where(eq(timeOffAllocations.id, body.id))
+      .where(eq(timeOffAllocations.id, body.id!))
       .returning();
 
     return NextResponse.json({ data: updated });
+    });
   } catch (error: any) {
-    const status = error.status || (error instanceof AuthorizationError ? error.status : 500);
+    const status = error instanceof z.ZodError ? 400 : error.status || (error instanceof AuthorizationError ? error.status : 500);
     return NextResponse.json(
       { error: error.message || "Failed to update allocation" },
       { status }
@@ -155,7 +167,7 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    await requireAuth(request.headers);
+    await requirePermission("timeOffAllocation", "delete", request.headers);
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
 
@@ -163,10 +175,15 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Allocation ID is required" }, { status: 400 });
     }
 
-    await db.delete(timeOffAllocations).where(eq(timeOffAllocations.id, id));
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(360002)`);
+      const [existing] = await tx.select().from(timeOffAllocations).where(eq(timeOffAllocations.id, id)).for("update");
+      if (existing?.status === "approved") throw new AuthorizationError("Approved allocations cannot be deleted", 409);
+      await tx.delete(timeOffAllocations).where(eq(timeOffAllocations.id, id));
+    });
     return NextResponse.json({ message: "Allocation deleted successfully" });
   } catch (error: any) {
-    const status = error.status || (error instanceof AuthorizationError ? error.status : 500);
+    const status = error instanceof z.ZodError ? 400 : error.status || (error instanceof AuthorizationError ? error.status : 500);
     return NextResponse.json(
       { error: error.message || "Failed to delete allocation" },
       { status }

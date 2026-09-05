@@ -3,7 +3,7 @@ import { requirePermission, AuthorizationError } from "@/lib/auth/authorization"
 import { getPayrunDetail } from "@/features/payroll/services/payroll.service";
 import { db } from "@/db/index";
 import { payruns, payslips, payslipLines, payslipWarnings } from "@/db/schema";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 
 export async function GET(
   request: NextRequest,
@@ -36,6 +36,8 @@ export async function DELETE(
     await requirePermission("payrun", "delete", request.headers);
     const { payrunId } = await params;
 
+    return db.transaction(async (db) => {
+      await db.execute(sql`select pg_advisory_xact_lock(360001)`);
     const [existing] = await db
       .select()
       .from(payruns)
@@ -46,7 +48,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Payrun not found" }, { status: 404 });
     }
 
-    if (existing.status === "paid") {
+    if (["validated", "paid"].includes(existing.status)) {
       return NextResponse.json(
         { error: "Finalized / paid payruns cannot be deleted. They must remain historical records." },
         { status: 400 }
@@ -69,6 +71,7 @@ export async function DELETE(
     await db.delete(payruns).where(eq(payruns.id, payrunId));
 
     return NextResponse.json({ message: "Payrun deleted successfully" });
+    });
   } catch (error: any) {
     const status = error.status || (error instanceof AuthorizationError ? error.status : 500);
     return NextResponse.json(

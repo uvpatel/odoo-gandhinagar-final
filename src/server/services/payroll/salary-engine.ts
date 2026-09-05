@@ -1,3 +1,4 @@
+import { evaluateExpression } from "./expression";
 import { type SalaryRule, type Employee, type Contract } from "@/db/schema";
 
 export type PayrollContext = {
@@ -39,33 +40,6 @@ export type SalaryComputationResult = {
   netAmount: number;
 };
 
-function safeEvaluateFormula(
-  formula: string,
-  results: Record<string, number>,
-  contractWage: number
-): number {
-  try {
-    let sanitized = formula.trim();
-    for (const [code, val] of Object.entries(results)) {
-      const regex = new RegExp(`\\b${code}\\b`, "g");
-      sanitized = sanitized.replace(regex, val.toString());
-    }
-    sanitized = sanitized.replace(/\bWAGE\b/g, contractWage.toString());
-
-    if (!/^[\d\s+\-*/().]+$/.test(sanitized)) {
-      console.warn(`Unsafe characters in formula after replacement: ${sanitized}`);
-      return 0;
-    }
-
-    const fn = new Function(`return (${sanitized});`);
-    const val = Number(fn());
-    return isNaN(val) ? 0 : Math.round(val * 100) / 100;
-  } catch (err) {
-    console.error(`Error calculating formula "${formula}":`, err);
-    return 0;
-  }
-}
-
 export function evaluateSalaryRule(
   rule: SalaryRule,
   context: PayrollContext
@@ -85,29 +59,34 @@ export function evaluateSalaryRule(
     const baseVal =
       baseCode === "BASIC"
         ? (context.results["BASIC"] ?? contractWage)
-        : (context.results[baseCode] ?? 0);
+        : (context.results[baseCode] ?? (() => { throw new Error(`Unknown percentage base: ${baseCode}`); })());
     return Math.round(baseVal * pct * 100) / 100;
   }
 
   if (rule.computationType === "formula" && rule.formula) {
-    return safeEvaluateFormula(rule.formula, context.results, contractWage);
+    return evaluateExpression(rule.formula, { ...context.results, WAGE: contractWage, WORKED_DAYS: context.attendance.workedDays, WORKED_HOURS: context.attendance.workedHours, OVERTIME_HOURS: context.attendance.overtimeHours, PAID_DAYS: context.leave.paidDays, UNPAID_DAYS: context.leave.unpaidDays });
   }
 
-  return 0;
+  throw new Error(`Invalid configuration for rule ${rule.code}`);
 }
 
 export function executeSalaryEngine(
   rules: SalaryRule[],
   context: PayrollContext
 ): SalaryComputationResult {
-  const sortedRules = [...rules].sort((a, b) => a.sequence - b.sequence);
+  const sortedRules = rules.filter((r) => r.isActive).sort((a, b) => a.sequence - b.sequence || a.code.localeCompare(b.code));
+  if (!sortedRules.length) throw new Error("Salary structure has no active rules");
+  if (new Set(sortedRules.map((r) => r.code)).size !== sortedRules.length) throw new Error("Duplicate salary rule codes");
+  context = { ...context, results: {} };
   const lines: EvaluatedSalaryLine[] = [];
 
   const contractWage = Number(context.contract.wage || 0);
   context.results["WAGE"] = contractWage;
 
   for (const rule of sortedRules) {
-    const amount = evaluateSalaryRule(rule, context);
+    const rawAmount = evaluateSalaryRule(rule, context);
+    if (!Number.isFinite(rawAmount) || Math.abs(rawAmount) >= 1e12) throw new Error(`Invalid amount for ${rule.code}`);
+    const amount = Math.round((rawAmount + Number.EPSILON) * 100) / 100;
     context.results[rule.code] = amount;
 
     lines.push({
@@ -123,32 +102,32 @@ export function executeSalaryEngine(
     });
   }
 
-  let basicAmount = context.results["BASIC"] ?? contractWage;
+  const basicAmount = context.results["BASIC"] ?? contractWage;
   let grossAmount = context.results["GROSS"] ?? 0;
   let deductionAmount = context.results["DEDUCTIONS"] ?? 0;
   let netAmount = context.results["NET"] ?? 0;
 
-  if (grossAmount === 0) {
+  if (context.results["GROSS"] === undefined) {
     grossAmount = lines
       .filter((l) => l.category === "basic" || l.category === "allowance")
       .reduce((sum, l) => sum + l.total, 0);
   }
 
-  if (deductionAmount === 0) {
+  if (context.results["DEDUCTIONS"] === undefined) {
     deductionAmount = lines
       .filter((l) => l.category === "deduction")
       .reduce((sum, l) => sum + l.total, 0);
   }
 
-  if (netAmount === 0) {
+  if (context.results["NET"] === undefined) {
     netAmount = grossAmount - deductionAmount;
   }
 
   return {
     lines,
     basicAmount,
-    grossAmount,
-    deductionAmount,
-    netAmount,
+    grossAmount: Math.round(grossAmount * 100) / 100,
+    deductionAmount: Math.round(deductionAmount * 100) / 100,
+    netAmount: Math.round(netAmount * 100) / 100,
   };
 }

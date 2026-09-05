@@ -1,6 +1,9 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import * as React from "react";
+import { useSearchParams } from "next/navigation";
 import { useCan } from "@/hooks/use-permissions";
 import {
   Table,
@@ -79,16 +82,17 @@ const statusLabels: Record<string, string> = {
   incomplete: "Incomplete",
 };
 
-export default function AttendancePage() {
+function AttendanceContent() {
   const { can, session } = useCan();
   const [attendanceList, setAttendanceList] = React.useState<AttendanceItem[]>([]);
   const [employeesList, setEmployeesList] = React.useState<EmployeeOption[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
 
   // Filters
+  const searchParams = useSearchParams();
   const [searchTerm, setSearchTerm] = React.useState("");
   const [isTodayOnly, setIsTodayOnly] = React.useState(false);
-  const [employeeFilter, setEmployeeFilter] = React.useState("all");
+  const [employeeFilter, setEmployeeFilter] = React.useState(searchParams.get("employeeId") || "all");
 
   // Quick Attendance Widget Popup
   const [isWidgetOpen, setIsWidgetOpen] = React.useState(false);
@@ -403,6 +407,15 @@ export default function AttendancePage() {
           )}
         </div>
       </div>
+
+      {employeeFilter !== "all" && (
+        <div className="flex items-center justify-between rounded-lg bg-blue-500/10 border border-blue-500/30 px-4 py-2.5 text-xs text-blue-700 dark:text-blue-300">
+          <span>Filtering attendance records for selected employee</span>
+          <Button variant="ghost" size="sm" onClick={() => setEmployeeFilter("all")} className="h-7 text-xs">
+            Clear Filter
+          </Button>
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -867,6 +880,14 @@ export default function AttendancePage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function AttendancePage() {
+  return (
+    <React.Suspense fallback={<div className="p-8 text-center text-xs text-muted-foreground">Loading attendance...</div>}>
+      <AttendanceContent />
+    </React.Suspense>
   );
 }
 

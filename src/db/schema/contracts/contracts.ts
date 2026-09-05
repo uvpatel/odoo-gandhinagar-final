@@ -12,6 +12,7 @@ import { employees } from "../employees/employees";
 import { departments } from "../organization/departments";
 import { jobPositions } from "../organization/job-positions";
 import { workingSchedules } from "../organization/working-schedules";
+import { salaryStructures } from "../payroll/salary-structures";
 
 export const contractStatusEnum = pgEnum("contract_status", [
   "draft",
@@ -41,7 +42,8 @@ export const contracts = pgTable(
       .references(() => jobPositions.id),
     workingScheduleId: uuid("working_schedule_id")
       .references(() => workingSchedules.id),
-    salaryStructureId: uuid("salary_structure_id"),
+    salaryStructureId: uuid("salary_structure_id")
+      .references(() => salaryStructures.id),
     wage: numeric("wage", {
       precision: 14,
       scale: 2,

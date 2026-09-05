@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/index";
-import { employees, departments, jobPositions, users } from "@/db/schema";
+import { employees, departments, jobPositions, users, workingSchedules } from "@/db/schema";
 import { requirePermission, AuthorizationError } from "@/lib/auth/authorization";
 import { eq, sql, asc, ilike, and, or } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
@@ -55,6 +55,8 @@ export async function GET(request: NextRequest) {
         jobCode: jobPositions.code,
         managerId: employees.managerId,
         managerName: sql<string | null>`${managers.firstName} || ' ' || ${managers.lastName}`.as("manager_name"),
+        workingScheduleId: employees.workingScheduleId,
+        workingScheduleName: workingSchedules.name,
         employeeType: employees.employeeType,
         status: employees.status,
         joiningDate: employees.joiningDate,
@@ -66,6 +68,7 @@ export async function GET(request: NextRequest) {
       .from(employees)
       .leftJoin(departments, eq(employees.departmentId, departments.id))
       .leftJoin(jobPositions, eq(employees.jobPositionId, jobPositions.id))
+      .leftJoin(workingSchedules, eq(employees.workingScheduleId, workingSchedules.id))
       .leftJoin(users, eq(employees.userId, users.id))
       .leftJoin(managers, eq(employees.managerId, managers.id))
       .where(conditions.length > 0 ? and(...conditions) : undefined)
@@ -114,6 +117,7 @@ export async function POST(request: NextRequest) {
         departmentId: body.departmentId || null,
         jobPositionId: body.jobPositionId || null,
         managerId: body.managerId || null,
+        workingScheduleId: body.workingScheduleId || null,
         employeeType: body.employeeType || "full_time",
         status: body.status || "active",
         joiningDate: body.joiningDate || new Date().toISOString().split("T")[0],
@@ -151,6 +155,7 @@ export async function PUT(request: NextRequest) {
         departmentId: body.departmentId !== undefined ? body.departmentId : undefined,
         jobPositionId: body.jobPositionId !== undefined ? body.jobPositionId : undefined,
         managerId: body.managerId !== undefined ? body.managerId : undefined,
+        workingScheduleId: body.workingScheduleId !== undefined ? body.workingScheduleId : undefined,
         employeeType: body.employeeType !== undefined ? body.employeeType : undefined,
         status: body.status !== undefined ? body.status : undefined,
         joiningDate: body.joiningDate !== undefined ? body.joiningDate : undefined,

@@ -1,3 +1,4 @@
+import { type Database } from "@/db";
 import { db } from "../index";
 import {
   salaryStructures,
@@ -29,8 +30,8 @@ export async function getSalaryStructures() {
   });
 }
 
-export async function getSalaryStructureById(id: string) {
-  return await db.query.salaryStructures.findFirst({
+export async function getSalaryStructureById(id: string, database: Database = db) {
+  return await database.query.salaryStructures.findFirst({
     where: { id },
     with: {
       rules: {

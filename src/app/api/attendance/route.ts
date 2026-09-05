@@ -14,6 +14,9 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const employeeId = searchParams.get("employeeId");
     const date = searchParams.get("date");
+    const startDate = searchParams.get("startDate");
+    const endDate = searchParams.get("endDate");
+    const departmentId = searchParams.get("departmentId");
     const todayOnly = searchParams.get("todayOnly") === "true";
     const q = searchParams.get("q");
 
@@ -33,11 +36,22 @@ export async function GET(request: NextRequest) {
       conditions.push(eq(attendance.employeeId, employeeId));
     }
 
+    if (departmentId && departmentId !== "all") {
+      conditions.push(eq(employees.departmentId, departmentId));
+    }
+
     if (todayOnly) {
       const todayStr = new Date().toISOString().split("T")[0];
       conditions.push(eq(attendance.attendanceDate, todayStr));
     } else if (date) {
       conditions.push(eq(attendance.attendanceDate, date));
+    } else {
+      if (startDate) {
+        conditions.push(sql`${attendance.attendanceDate} >= ${startDate}`);
+      }
+      if (endDate) {
+        conditions.push(sql`${attendance.attendanceDate} <= ${endDate}`);
+      }
     }
 
     if (q) {

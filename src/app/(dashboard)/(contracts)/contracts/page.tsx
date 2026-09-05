@@ -1,6 +1,9 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import * as React from "react";
+import { useSearchParams } from "next/navigation";
 import { useCan } from "@/hooks/use-permissions";
 import {
   Table,
@@ -56,10 +59,11 @@ type ContractItem = {
   workingScheduleName: string | null;
   salaryStructureId: string | null;
   salaryStructureName: string | null;
-  wage: string | number;
+  wage: string;
   currency: string;
   status: "draft" | "active" | "expired" | "terminated" | "cancelled";
   createdAt: string;
+  updatedAt: string;
 };
 
 type EmployeeOption = {
@@ -67,9 +71,7 @@ type EmployeeOption = {
   fullName: string;
   employeeNumber: string;
   departmentId: string | null;
-  departmentName: string | null;
   jobPositionId: string | null;
-  jobTitle: string | null;
 };
 
 type DepartmentOption = {
@@ -85,6 +87,11 @@ type JobPositionOption = {
 };
 
 type WorkingScheduleOption = {
+  id: string;
+  name: string;
+};
+
+type SalaryStructureOption = {
   id: string;
   name: string;
 };
@@ -105,13 +112,16 @@ const statusLabels: Record<string, string> = {
   cancelled: "Cancelled",
 };
 
-export default function ContractPage() {
+function ContractContent() {
   const { can } = useCan();
+  const searchParams = useSearchParams();
+  const [employeeFilter, setEmployeeFilter] = React.useState<string | null>(searchParams.get("employeeId"));
   const [contractsList, setContractsList] = React.useState<ContractItem[]>([]);
   const [employeesList, setEmployeesList] = React.useState<EmployeeOption[]>([]);
   const [departmentsList, setDepartmentsList] = React.useState<DepartmentOption[]>([]);
   const [jobPositionsList, setJobPositionsList] = React.useState<JobPositionOption[]>([]);
   const [schedulesList, setSchedulesList] = React.useState<WorkingScheduleOption[]>([]);
+  const [salaryStructuresList, setSalaryStructuresList] = React.useState<SalaryStructureOption[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
 
   // Filters
@@ -132,6 +142,7 @@ export default function ContractPage() {
     departmentId: "",
     jobPositionId: "",
     workingScheduleId: "",
+    salaryStructureId: "",
     wage: "85000",
     currency: "INR",
     status: "active" as ContractItem["status"],
@@ -144,20 +155,23 @@ export default function ContractPage() {
   const fetchData = React.useCallback(async () => {
     try {
       setIsLoading(true);
-      const [contractsRes, empRes, deptRes, jobRes, schedRes] = await Promise.all([
-        fetch("/api/contracts"),
+      const url = employeeFilter ? `/api/contracts?employeeId=${employeeFilter}` : "/api/contracts";
+      const [contractsRes, empRes, deptRes, jobRes, schedRes, structRes] = await Promise.all([
+        fetch(url),
         fetch("/api/employees"),
         fetch("/api/departments"),
         fetch("/api/job-positions"),
         fetch("/api/working-schedules"),
+        fetch("/api/payroll/structures"),
       ]);
 
-      const [contractsData, empData, deptData, jobData, schedData] = await Promise.all([
+      const [contractsData, empData, deptData, jobData, schedData, structData] = await Promise.all([
         contractsRes.json(),
         empRes.json(),
         deptRes.json(),
         jobRes.json(),
         schedRes.json(),
+        structRes.json(),
       ]);
 
       if (contractsData.data) setContractsList(contractsData.data);
@@ -165,13 +179,14 @@ export default function ContractPage() {
       if (deptData.data) setDepartmentsList(deptData.data);
       if (jobData.data) setJobPositionsList(jobData.data);
       if (schedData.data) setSchedulesList(schedData.data);
+      if (structData.data) setSalaryStructuresList(structData.data);
     } catch (err) {
       console.error("Failed to load contract directory data:", err);
       toast.error("Failed to load contracts from database");
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [employeeFilter]);
 
   React.useEffect(() => {
     fetchData();
@@ -201,7 +216,7 @@ export default function ContractPage() {
     const nextNum = contractsList.length + 1;
     const autoNumber = `CON/${year}/${String(nextNum).padStart(4, "0")}`;
 
-    const firstEmp = employeesList[0];
+    const firstEmp = employeeFilter ? employeesList.find((e) => e.id === employeeFilter) || employeesList[0] : employeesList[0];
 
     setFormData({
       contractNumber: autoNumber,
@@ -211,6 +226,7 @@ export default function ContractPage() {
       departmentId: firstEmp?.departmentId || departmentsList[0]?.id || "",
       jobPositionId: firstEmp?.jobPositionId || jobPositionsList[0]?.id || "",
       workingScheduleId: schedulesList[0]?.id || "",
+      salaryStructureId: salaryStructuresList[0]?.id || "",
       wage: "85000",
       currency: "INR",
       status: "active",
@@ -234,6 +250,7 @@ export default function ContractPage() {
       departmentId: contract.departmentId || "",
       jobPositionId: contract.jobPositionId || "",
       workingScheduleId: contract.workingScheduleId || "",
+      salaryStructureId: contract.salaryStructureId || "",
       wage: String(contract.wage),
       currency: contract.currency || "INR",
       status: contract.status,
@@ -249,11 +266,7 @@ export default function ContractPage() {
       return;
     }
 
-    if (
-      !confirm(
-        `Are you sure you want to delete contract ${contract.contractNumber} for ${contract.employeeName || "Employee"}?`
-      )
-    ) {
+    if (!confirm(`Are you sure you want to delete contract ${contract.contractNumber}?`)) {
       return;
     }
 
@@ -263,7 +276,7 @@ export default function ContractPage() {
       if (!res.ok) throw new Error(data.error || "Failed to delete contract");
 
       toast.success("Contract record deleted", {
-        description: `Contract ${contract.contractNumber} has been removed.`,
+        description: `${contract.contractNumber} has been removed.`,
       });
       setContractsList((prev) => prev.filter((item) => item.id !== contract.id));
     } catch (err: any) {
@@ -300,7 +313,7 @@ export default function ContractPage() {
       setIsModalOpen(false);
       fetchData();
     } catch (err: any) {
-      toast.error("Operation failed", { description: err.message });
+      toast.error("Action failed", { description: err.message });
     } finally {
       setIsSubmitting(false);
     }
@@ -314,8 +327,9 @@ export default function ContractPage() {
       (c.employeeNumber && c.employeeNumber.toLowerCase().includes(searchTerm.toLowerCase()));
 
     const matchesStatus = statusFilter === "all" || c.status === statusFilter;
+    const matchesEmployee = !employeeFilter || c.employeeId === employeeFilter;
 
-    return matchesSearch && matchesStatus;
+    return matchesSearch && matchesStatus && matchesEmployee;
   });
 
   // Key Metrics
@@ -346,7 +360,7 @@ export default function ContractPage() {
             </Badge>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            List view for sort, filter, and bulk management of employee contracts.
+            Manage employee employment contracts, wage structures, and terms.
           </p>
         </div>
 
@@ -364,6 +378,15 @@ export default function ContractPage() {
           New Contract
         </Button>
       </div>
+
+      {employeeFilter && (
+        <div className="flex items-center justify-between rounded-lg bg-blue-500/10 border border-blue-500/30 px-4 py-2.5 text-xs text-blue-700 dark:text-blue-300">
+          <span>Filtering contracts for selected employee</span>
+          <Button variant="ghost" size="sm" onClick={() => setEmployeeFilter(null)} className="h-7 text-xs">
+            Clear Filter
+          </Button>
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -731,15 +754,24 @@ export default function ContractPage() {
                 </div>
               </div>
 
-              {/* Salary Structure / Rules Box (From Wireframe) */}
-              <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-2 mt-4">
-                <div className="flex items-center gap-2 font-semibold text-sm text-foreground">
-                  <CalculatorIcon className="size-4 text-primary" />
-                  <span>Salary Structure / Rules</span>
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  <span className="font-medium text-foreground">Structure Type:</span> Employee Salary.
-                  This running contract is the source for payroll calculation in the active period.
+              {/* Salary Structure Select */}
+              <div className="space-y-1.5 mt-2">
+                <Label htmlFor="salaryStructureId">Salary Structure</Label>
+                <select
+                  id="salaryStructureId"
+                  value={formData.salaryStructureId}
+                  onChange={(e) => setFormData({ ...formData, salaryStructureId: e.target.value })}
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option value="">Select Salary Structure...</option>
+                  {salaryStructuresList.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-muted-foreground">
+                  The salary structure associated with this contract governs payroll rule execution.
                 </p>
               </div>
 
@@ -773,6 +805,14 @@ export default function ContractPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ContractPage() {
+  return (
+    <React.Suspense fallback={<div className="p-8 text-center text-xs text-muted-foreground">Loading contracts...</div>}>
+      <ContractContent />
+    </React.Suspense>
   );
 }
 

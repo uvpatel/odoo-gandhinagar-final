@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useCan } from "@/hooks/use-permissions";
 import {
   Table,
@@ -39,6 +40,13 @@ import {
   XIcon,
   LockIcon,
   ShieldCheckIcon,
+  Columns3Icon,
+  EyeIcon,
+  FileTextIcon,
+  ClockIcon,
+  CalendarDaysIcon,
+  ExternalLinkIcon,
+  LayersIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -58,6 +66,8 @@ type EmployeeItem = {
   jobCode: string | null;
   managerId: string | null;
   managerName: string | null;
+  workingScheduleId?: string | null;
+  workingScheduleName?: string | null;
   employeeType: "full_time" | "part_time" | "contract" | "intern";
   status: "draft" | "active" | "inactive" | "terminated";
   joiningDate: string | null;
@@ -79,6 +89,27 @@ type JobPositionOption = {
   code: string;
 };
 
+type WorkingScheduleOption = {
+  id: string;
+  name: string;
+};
+
+type EmployeeHubDetails = EmployeeItem & {
+  contractsCount: number;
+  attendanceCount: number;
+  timeOffCount: number;
+  allocationsCount: number;
+  activeContract: {
+    id: string;
+    contractNumber: string;
+    wage: string;
+    currency: string;
+    startDate: string;
+    endDate: string | null;
+    status: string;
+  } | null;
+};
+
 const statusColors: Record<string, string> = {
   active: "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
   draft: "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400",
@@ -98,14 +129,20 @@ export default function EmployeesPage() {
   const [employeesList, setEmployeesList] = React.useState<EmployeeItem[]>([]);
   const [departmentsList, setDepartmentsList] = React.useState<DepartmentOption[]>([]);
   const [jobPositionsList, setJobPositionsList] = React.useState<JobPositionOption[]>([]);
+  const [workingSchedulesList, setWorkingSchedulesList] = React.useState<WorkingScheduleOption[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
-  const [viewMode, setViewMode] = React.useState<"table" | "grid">("table");
+  const [viewMode, setViewMode] = React.useState<"table" | "grid" | "kanban">("table");
 
   // Filters
   const [searchTerm, setSearchTerm] = React.useState("");
   const [departmentFilter, setDepartmentFilter] = React.useState("all");
   const [statusFilter, setStatusFilter] = React.useState("all");
   const [typeFilter, setTypeFilter] = React.useState("all");
+
+  // Operational Hub Drawer/Modal State
+  const [hubEmployee, setHubEmployee] = React.useState<EmployeeHubDetails | null>(null);
+  const [isHubOpen, setIsHubOpen] = React.useState(false);
+  const [isHubLoading, setIsHubLoading] = React.useState(false);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = React.useState(false);
@@ -120,6 +157,8 @@ export default function EmployeesPage() {
     phone: "",
     departmentId: "",
     jobPositionId: "",
+    workingScheduleId: "",
+    managerId: "",
     employeeType: "full_time" as EmployeeItem["employeeType"],
     status: "active" as EmployeeItem["status"],
     joiningDate: new Date().toISOString().split("T")[0],
@@ -134,21 +173,24 @@ export default function EmployeesPage() {
   const fetchData = React.useCallback(async () => {
     try {
       setIsLoading(true);
-      const [empRes, deptRes, jobRes] = await Promise.all([
+      const [empRes, deptRes, jobRes, schedRes] = await Promise.all([
         fetch("/api/employees"),
         fetch("/api/departments"),
         fetch("/api/job-positions"),
+        fetch("/api/working-schedules"),
       ]);
 
-      const [empData, deptData, jobData] = await Promise.all([
+      const [empData, deptData, jobData, schedData] = await Promise.all([
         empRes.json(),
         deptRes.json(),
         jobRes.json(),
+        schedRes.json(),
       ]);
 
       if (empData.data) setEmployeesList(empData.data);
       if (deptData.data) setDepartmentsList(deptData.data);
       if (jobData.data) setJobPositionsList(jobData.data);
+      if (schedData.data) setWorkingSchedulesList(schedData.data);
     } catch (err) {
       console.error("Failed to load employee directory data:", err);
       toast.error("Failed to load employees from database");
@@ -176,6 +218,8 @@ export default function EmployeesPage() {
       phone: "",
       departmentId: departmentsList[0]?.id || "",
       jobPositionId: jobPositionsList[0]?.id || "",
+      workingScheduleId: workingSchedulesList[0]?.id || "",
+      managerId: "",
       employeeType: "full_time",
       status: "active",
       joiningDate: new Date().toISOString().split("T")[0],
@@ -200,6 +244,8 @@ export default function EmployeesPage() {
       phone: emp.phone || "",
       departmentId: emp.departmentId || "",
       jobPositionId: emp.jobPositionId || "",
+      workingScheduleId: emp.workingScheduleId || "",
+      managerId: emp.managerId || "",
       employeeType: emp.employeeType,
       status: emp.status,
       joiningDate: emp.joiningDate || new Date().toISOString().split("T")[0],
@@ -207,6 +253,22 @@ export default function EmployeesPage() {
       bankName: emp.bankName || "",
     });
     setIsModalOpen(true);
+  };
+
+  const openHubModal = async (empId: string) => {
+    try {
+      setIsHubLoading(true);
+      setIsHubOpen(true);
+      const res = await fetch(`/api/employees/${empId}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to load employee details");
+      setHubEmployee(json.data);
+    } catch (err: any) {
+      toast.error("Failed to load employee hub", { description: err.message });
+      setIsHubOpen(false);
+    } finally {
+      setIsHubLoading(false);
+    }
   };
 
   const handleDelete = async (emp: EmployeeItem) => {
@@ -328,6 +390,14 @@ export default function EmployeesPage() {
               title="Grid View"
             >
               <LayoutGridIcon className="size-4" />
+            </Button>
+            <Button
+              variant={viewMode === "kanban" ? "secondary" : "ghost"}
+              size="icon-xs"
+              onClick={() => setViewMode("kanban")}
+              title="Kanban View"
+            >
+              <Columns3Icon className="size-4" />
             </Button>
           </div>
 
@@ -505,8 +575,12 @@ export default function EmployeesPage() {
                       {emp.employeeNumber}
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-3">
-                        <Avatar className="size-8">
+                      <div
+                        className="flex items-center gap-3 cursor-pointer group"
+                        onClick={() => openHubModal(emp.id)}
+                        title="Click to view Operational Hub"
+                      >
+                        <Avatar className="size-8 group-hover:ring-2 group-hover:ring-primary/40 transition">
                           <AvatarImage src={emp.avatar || undefined} />
                           <AvatarFallback className="text-xs">
                             {emp.firstName.charAt(0)}
@@ -514,7 +588,7 @@ export default function EmployeesPage() {
                           </AvatarFallback>
                         </Avatar>
                         <div className="flex flex-col">
-                          <span className="font-medium leading-none">{emp.fullName}</span>
+                          <span className="font-medium leading-none group-hover:text-primary transition">{emp.fullName}</span>
                           <span className="mt-1 text-xs text-muted-foreground">
                             {emp.workEmail || "—"}
                           </span>
@@ -554,6 +628,15 @@ export default function EmployeesPage() {
                         <Button
                           variant="ghost"
                           size="icon-xs"
+                          onClick={() => openHubModal(emp.id)}
+                          title="Open Operational Hub"
+                          className="text-primary hover:bg-primary/10"
+                        >
+                          <EyeIcon className="size-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
                           onClick={() => openEditModal(emp)}
                           disabled={!canUpdate}
                           title={canUpdate ? "Edit Employee" : "Requires HR Manager or Admin"}
@@ -587,14 +670,18 @@ export default function EmployeesPage() {
             </Table>
           </CardContent>
         </Card>
-      ) : (
+      ) : viewMode === "grid" ? (
         /* Grid Card View */
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filteredEmployees.map((emp) => (
             <Card key={emp.id} className="transition-all hover:shadow-md">
               <CardHeader className="flex flex-row items-start justify-between pb-3">
-                <div className="flex items-center gap-3">
-                  <Avatar className="size-10">
+                <div
+                  className="flex items-center gap-3 cursor-pointer group"
+                  onClick={() => openHubModal(emp.id)}
+                  title="View Operational Hub"
+                >
+                  <Avatar className="size-10 group-hover:ring-2 group-hover:ring-primary/40 transition">
                     <AvatarImage src={emp.avatar || undefined} />
                     <AvatarFallback>
                       {emp.firstName.charAt(0)}
@@ -602,7 +689,7 @@ export default function EmployeesPage() {
                     </AvatarFallback>
                   </Avatar>
                   <div>
-                    <CardTitle className="text-base">{emp.fullName}</CardTitle>
+                    <CardTitle className="text-base group-hover:text-primary transition">{emp.fullName}</CardTitle>
                     <CardDescription className="text-xs font-mono text-primary">
                       {emp.employeeNumber}
                     </CardDescription>
@@ -656,6 +743,15 @@ export default function EmployeesPage() {
                     <Button
                       variant="ghost"
                       size="icon-xs"
+                      onClick={() => openHubModal(emp.id)}
+                      title="Open Operational Hub"
+                      className="text-primary hover:bg-primary/10"
+                    >
+                      <EyeIcon className="size-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
                       onClick={() => openEditModal(emp)}
                       disabled={!canUpdate}
                     >
@@ -675,6 +771,89 @@ export default function EmployeesPage() {
               </CardContent>
             </Card>
           ))}
+        </div>
+      ) : (
+        /* Kanban Board View */
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {(["active", "draft", "inactive", "terminated"] as const).map((colStatus) => {
+            const colEmployees = filteredEmployees.filter((e) => e.status === colStatus);
+            return (
+              <div key={colStatus} className="flex flex-col rounded-xl border border-border bg-muted/20 p-3 min-h-[400px]">
+                <div className="flex items-center justify-between pb-3 border-b border-border/50">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold capitalize">{colStatus}</span>
+                    <Badge variant="outline" className={`text-[11px] px-1.5 py-0 capitalize ${statusColors[colStatus]}`}>
+                      {colEmployees.length}
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex flex-col gap-2.5 flex-1">
+                  {colEmployees.length === 0 ? (
+                    <div className="flex flex-1 items-center justify-center p-6 text-center text-xs text-muted-foreground border border-dashed rounded-lg border-border/40">
+                      No employees
+                    </div>
+                  ) : (
+                    colEmployees.map((emp) => (
+                      <Card
+                        key={emp.id}
+                        className="p-3 shadow-xs hover:shadow-md transition cursor-pointer border border-border/70"
+                        onClick={() => openHubModal(emp.id)}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2.5">
+                            <Avatar className="size-8">
+                              <AvatarImage src={emp.avatar || undefined} />
+                              <AvatarFallback className="text-xs">
+                                {emp.firstName.charAt(0)}{emp.lastName.charAt(0)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex flex-col">
+                              <span className="text-xs font-semibold leading-tight">{emp.fullName}</span>
+                              <span className="font-mono text-[10px] text-muted-foreground">{emp.employeeNumber}</span>
+                            </div>
+                          </div>
+                          <Badge variant="outline" className="text-[9px] px-1 py-0">
+                            {typeLabels[emp.employeeType] || emp.employeeType}
+                          </Badge>
+                        </div>
+
+                        <div className="mt-2 text-[11px] text-muted-foreground space-y-0.5">
+                          <div className="truncate font-medium text-foreground">{emp.jobTitle || "No Position"}</div>
+                          <div className="truncate">{emp.departmentName || "No Department"}</div>
+                        </div>
+
+                        <div className="mt-2.5 flex items-center justify-between pt-2 border-t border-border/40 text-[10px] text-muted-foreground" onClick={(e) => e.stopPropagation()}>
+                          <span className="truncate max-w-[120px]">{emp.workEmail || "—"}</span>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon-xs"
+                              onClick={() => openHubModal(emp.id)}
+                              title="Open Operational Hub"
+                              className="text-primary hover:bg-primary/10 size-6"
+                            >
+                              <EyeIcon className="size-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon-xs"
+                              onClick={() => openEditModal(emp)}
+                              disabled={!canUpdate}
+                              title="Edit"
+                              className="size-6"
+                            >
+                              <PencilIcon className="size-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      </Card>
+                    ))
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -777,6 +956,44 @@ export default function EmployeesPage() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="workingScheduleId">Working Schedule</Label>
+                  <select
+                    id="workingScheduleId"
+                    value={formData.workingScheduleId}
+                    onChange={(e) => setFormData({ ...formData, workingScheduleId: e.target.value })}
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                  >
+                    <option value="">Select Working Schedule...</option>
+                    {workingSchedulesList.map((ws) => (
+                      <option key={ws.id} value={ws.id}>
+                        {ws.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="managerId">Direct Manager</Label>
+                  <select
+                    id="managerId"
+                    value={formData.managerId}
+                    onChange={(e) => setFormData({ ...formData, managerId: e.target.value })}
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                  >
+                    <option value="">No Direct Manager</option>
+                    {employeesList
+                      .filter((e) => !editingEmployee || e.id !== editingEmployee.id)
+                      .map((mgr) => (
+                        <option key={mgr.id} value={mgr.id}>
+                          {mgr.fullName} ({mgr.employeeNumber})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              </div>
+
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="employeeType">Employment Type</Label>
@@ -867,6 +1084,213 @@ export default function EmployeesPage() {
                 </Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Employee Operational Hub Modal */}
+      {isHubOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl border border-border bg-background p-6 shadow-2xl animate-in fade-in zoom-in-95">
+            {isHubLoading || !hubEmployee ? (
+              <div className="flex flex-col items-center justify-center py-12 gap-3">
+                <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                <span className="text-sm text-muted-foreground">Loading employee operational hub...</span>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Header Profile */}
+                <div className="flex items-start justify-between border-b pb-4">
+                  <div className="flex items-center gap-4">
+                    <Avatar className="size-14">
+                      <AvatarImage src={hubEmployee.avatar || undefined} />
+                      <AvatarFallback className="text-base font-semibold">
+                        {hubEmployee.firstName.charAt(0)}{hubEmployee.lastName.charAt(0)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-xl font-bold">{hubEmployee.fullName}</h2>
+                        <Badge
+                          variant="outline"
+                          className={`capitalize text-xs ${statusColors[hubEmployee.status] || ""}`}
+                        >
+                          {hubEmployee.status}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="font-mono text-xs font-semibold text-primary">{hubEmployee.employeeNumber}</span>
+                        <span className="text-xs text-muted-foreground">•</span>
+                        <span className="text-xs text-muted-foreground">{hubEmployee.jobTitle || "No Position"}</span>
+                        <span className="text-xs text-muted-foreground">•</span>
+                        <span className="text-xs text-muted-foreground">{hubEmployee.departmentName || "No Department"}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => setIsHubOpen(false)}
+                  >
+                    <XIcon className="size-4" />
+                  </Button>
+                </div>
+
+                {/* 4 Live Smart Counter Buttons */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <Link
+                    href={`/contracts?employeeId=${hubEmployee.id}`}
+                    className="flex flex-col items-center justify-center p-3 rounded-lg border border-border bg-card hover:bg-accent hover:border-primary/50 transition text-center group"
+                  >
+                    <div className="flex items-center justify-between w-full text-muted-foreground mb-1">
+                      <FileTextIcon className="size-4 text-blue-500" />
+                      <ExternalLinkIcon className="size-3 opacity-0 group-hover:opacity-100 transition" />
+                    </div>
+                    <span className="text-2xl font-bold">{hubEmployee.contractsCount}</span>
+                    <span className="text-[11px] font-medium text-muted-foreground">Contracts</span>
+                  </Link>
+
+                  <Link
+                    href={`/attendance?employeeId=${hubEmployee.id}`}
+                    className="flex flex-col items-center justify-center p-3 rounded-lg border border-border bg-card hover:bg-accent hover:border-primary/50 transition text-center group"
+                  >
+                    <div className="flex items-center justify-between w-full text-muted-foreground mb-1">
+                      <ClockIcon className="size-4 text-emerald-500" />
+                      <ExternalLinkIcon className="size-3 opacity-0 group-hover:opacity-100 transition" />
+                    </div>
+                    <span className="text-2xl font-bold">{hubEmployee.attendanceCount}</span>
+                    <span className="text-[11px] font-medium text-muted-foreground">Timesheets</span>
+                  </Link>
+
+                  <Link
+                    href={`/time-off/requests?employeeId=${hubEmployee.id}`}
+                    className="flex flex-col items-center justify-center p-3 rounded-lg border border-border bg-card hover:bg-accent hover:border-primary/50 transition text-center group"
+                  >
+                    <div className="flex items-center justify-between w-full text-muted-foreground mb-1">
+                      <CalendarDaysIcon className="size-4 text-amber-500" />
+                      <ExternalLinkIcon className="size-3 opacity-0 group-hover:opacity-100 transition" />
+                    </div>
+                    <span className="text-2xl font-bold">{hubEmployee.timeOffCount}</span>
+                    <span className="text-[11px] font-medium text-muted-foreground">Leave Requests</span>
+                  </Link>
+
+                  <Link
+                    href={`/time-off/allocations?employeeId=${hubEmployee.id}`}
+                    className="flex flex-col items-center justify-center p-3 rounded-lg border border-border bg-card hover:bg-accent hover:border-primary/50 transition text-center group"
+                  >
+                    <div className="flex items-center justify-between w-full text-muted-foreground mb-1">
+                      <LayersIcon className="size-4 text-purple-500" />
+                      <ExternalLinkIcon className="size-3 opacity-0 group-hover:opacity-100 transition" />
+                    </div>
+                    <span className="text-2xl font-bold">{hubEmployee.allocationsCount}</span>
+                    <span className="text-[11px] font-medium text-muted-foreground">Allocations</span>
+                  </Link>
+                </div>
+
+                {/* Active Contract Summary if present */}
+                {hubEmployee.activeContract && (
+                  <Card className="border-primary/30 bg-primary/5">
+                    <CardContent className="p-4 flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold text-primary uppercase tracking-wide">Active Running Contract</span>
+                          <Badge variant="outline" className="border-primary/40 text-[10px] text-primary">
+                            {hubEmployee.activeContract.contractNumber}
+                          </Badge>
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          Valid: {hubEmployee.activeContract.startDate} {hubEmployee.activeContract.endDate ? `to ${hubEmployee.activeContract.endDate}` : "(Open-ended)"}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-base font-bold text-foreground">
+                          {Number(hubEmployee.activeContract.wage).toLocaleString()} {hubEmployee.activeContract.currency}
+                        </div>
+                        <span className="text-[11px] text-muted-foreground">Gross Wage / Month</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Detailed Employee Record Tabs / Fields */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                  <div className="space-y-3 rounded-lg border border-border p-4 bg-muted/10">
+                    <h3 className="font-semibold text-foreground text-sm">Employment & Organization</h3>
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Department:</span>
+                        <span className="font-medium text-foreground">{hubEmployee.departmentName || "Unassigned"}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Job Position:</span>
+                        <span className="font-medium text-foreground">{hubEmployee.jobTitle || "Unassigned"}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Direct Manager:</span>
+                        <span className="font-medium text-foreground">{hubEmployee.managerName || "None"}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Working Schedule:</span>
+                        <span className="font-medium text-foreground">{hubEmployee.workingScheduleName || "Standard (40 hrs/wk)"}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Employment Type:</span>
+                        <span className="font-medium text-foreground">{typeLabels[hubEmployee.employeeType] || hubEmployee.employeeType}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Joining Date:</span>
+                        <span className="font-medium text-foreground">{hubEmployee.joiningDate || "—"}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 rounded-lg border border-border p-4 bg-muted/10">
+                    <h3 className="font-semibold text-foreground text-sm">Contact & Payroll Information</h3>
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Work Email:</span>
+                        <span className="font-medium text-foreground">{hubEmployee.workEmail || "—"}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Phone Number:</span>
+                        <span className="font-medium text-foreground">{hubEmployee.phone || "—"}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Bank Name:</span>
+                        <span className="font-medium text-foreground">{hubEmployee.bankName || "—"}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Account Number:</span>
+                        <span className="font-mono text-foreground font-medium">
+                          {hubEmployee.bankAccountNumber ? `••••${hubEmployee.bankAccountNumber.slice(-4)}` : "—"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer Controls */}
+                <div className="flex items-center justify-end gap-2 pt-4 border-t">
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsHubOpen(false)}
+                  >
+                    Close
+                  </Button>
+                  {canUpdate && (
+                    <Button
+                      onClick={() => {
+                        setIsHubOpen(false);
+                        openEditModal(hubEmployee);
+                      }}
+                    >
+                      <PencilIcon className="mr-1.5 size-4" />
+                      Edit Profile
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

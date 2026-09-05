@@ -1,3 +1,4 @@
+import { type Database } from "@/db";
 import { db } from "../index";
 import {
   timeOffTypes,
@@ -57,8 +58,8 @@ export async function getApprovedLeaveForPeriod(
   employeeId: string,
   periodStart: string,
   periodEnd: string
-) {
-  return await db.query.timeOffRequests.findMany({
+, database: Database = db) {
+  return await database.query.timeOffRequests.findMany({
     where: {
       employeeId,
       status: "approved",

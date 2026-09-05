@@ -1,3 +1,6 @@
+import { z } from "zod";
+import { calendarDays, dateSchema } from "@/server/domain/hr";
+import { transitionLeave } from "@/server/services/time-off/approval";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/index";
 import { timeOffRequests, timeOffTypes, employees } from "@/db/schema";
@@ -78,7 +81,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ data: requests });
   } catch (error: any) {
-    const status = error.status || (error instanceof AuthorizationError ? error.status : 500);
+    const status = error instanceof z.ZodError ? 400 : error.status || (error instanceof AuthorizationError ? error.status : 500);
     return NextResponse.json(
       { error: error.message || "Failed to fetch time-off requests" },
       { status }
@@ -91,7 +94,11 @@ export async function POST(request: NextRequest) {
     const session = await requireAuth(request.headers);
     const role = normalizeRole((session.user as { role?: string })?.role);
     const currentEmployee = await getCurrentEmployee(session.user.id);
-    const body = await request.json();
+    const body = z.object({ employeeId: z.string().uuid().optional(), timeOffTypeId: z.string().uuid(), startDate: dateSchema, endDate: dateSchema, reason: z.string().max(2000).optional() }).parse(await request.json());
+    const duration = calendarDays(body.startDate, body.endDate);
+    const [leaveType] = await db.select().from(timeOffTypes).where(eq(timeOffTypes.id, body.timeOffTypeId));
+    if (!leaveType?.isActive) throw new AuthorizationError("Select an active leave type", 400);
+    if (leaveType.unit !== "days") throw new AuthorizationError("Hourly requests require time-of-day input and are not supported by this form", 400);
 
     let targetEmployeeId = body.employeeId;
 
@@ -119,7 +126,7 @@ export async function POST(request: NextRequest) {
         timeOffTypeId: body.timeOffTypeId,
         startDate: body.startDate,
         endDate: body.endDate,
-        duration: String(body.duration || 1),
+        duration: String(duration),
         reason: body.reason || null,
         status: "pending",
       })
@@ -127,7 +134,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ data: newRequest }, { status: 201 });
   } catch (error: any) {
-    const status = error.status || (error instanceof AuthorizationError ? error.status : 500);
+    const status = error instanceof z.ZodError ? 400 : error.status || (error instanceof AuthorizationError ? error.status : 500);
     return NextResponse.json(
       { error: error.message || "Failed to submit time-off request" },
       { status }
@@ -160,21 +167,18 @@ export async function DELETE(request: NextRequest) {
     const isSelf = currentEmployee && currentEmployee.id === existing.employeeId;
 
     if (isSelf && hasPermission(role, "timeOffRequest", "cancel-self")) {
-      await db
-        .update(timeOffRequests)
-        .set({ status: "cancelled", updatedAt: new Date() })
-        .where(eq(timeOffRequests.id, id));
+      await transitionLeave(id, "cancelled", session.user.id);
       return NextResponse.json({ message: "Time-off request cancelled successfully" });
     }
 
     if (hasPermission(role, "timeOffRequest", "delete")) {
-      await db.delete(timeOffRequests).where(eq(timeOffRequests.id, id));
+      await transitionLeave(id, "cancelled", session.user.id);
       return NextResponse.json({ message: "Time-off request deleted successfully" });
     }
 
     throw new AuthorizationError("Forbidden: Insufficient privileges to cancel or delete request", 403);
   } catch (error: any) {
-    const status = error.status || (error instanceof AuthorizationError ? error.status : 500);
+    const status = error instanceof z.ZodError ? 400 : error.status || (error instanceof AuthorizationError ? error.status : 500);
     return NextResponse.json(
       { error: error.message || "Failed to cancel/delete time-off request" },
       { status }

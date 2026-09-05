@@ -91,6 +91,8 @@ const trendChartConfig: ChartConfig = {
 
 export function PayrollDashboardView() {
   const [departmentId, setDepartmentId] = useState<string>("all");
+  const [employeeType, setEmployeeType] = useState<string>("all");
+  const [periodPreset, setPeriodPreset] = useState<string>("all");
 
   // Fetch departments list
   const { data: deptsData } = useQuery<{ data: Array<{ id: string; name: string }> }>({
@@ -105,10 +107,26 @@ export function PayrollDashboardView() {
 
   // Fetch dashboard metrics
   const { data, isLoading, error } = useQuery<{ data: PayrollDashboardData }>({
-    queryKey: ["payroll-dashboard-metrics", departmentId],
+    queryKey: ["payroll-dashboard-metrics", departmentId, employeeType, periodPreset],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (departmentId !== "all") params.set("departmentId", departmentId);
+      if (employeeType !== "all") params.set("employeeType", employeeType);
+
+      if (periodPreset === "this_month") {
+        const now = new Date();
+        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+        const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+        params.set("startDate", firstDay);
+        params.set("endDate", lastDay);
+      } else if (periodPreset === "last_3_months") {
+        const now = new Date();
+        const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 2, 1).toISOString().slice(0, 10);
+        const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+        params.set("startDate", threeMonthsAgo);
+        params.set("endDate", lastDay);
+      }
+
       const res = await fetch(`/api/payroll/dashboard?${params.toString()}`);
       if (!res.ok) {
         const err = await res.json();
@@ -162,7 +180,7 @@ export function PayrollDashboardView() {
             value={departmentId}
             onValueChange={(val) => setDepartmentId(val ?? "all")}
           >
-            <SelectTrigger className="h-8 text-xs w-44">
+            <SelectTrigger className="h-8 text-xs w-36">
               <SelectValue placeholder="All Departments" />
             </SelectTrigger>
             <SelectContent>
@@ -172,6 +190,36 @@ export function PayrollDashboardView() {
                   {d.name}
                 </SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={employeeType}
+            onValueChange={(val) => setEmployeeType(val ?? "all")}
+          >
+            <SelectTrigger className="h-8 text-xs w-32">
+              <SelectValue placeholder="All Types" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="full_time">Full-Time</SelectItem>
+              <SelectItem value="part_time">Part-Time</SelectItem>
+              <SelectItem value="contract">Contract</SelectItem>
+              <SelectItem value="intern">Intern</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={periodPreset}
+            onValueChange={(val) => setPeriodPreset(val ?? "all")}
+          >
+            <SelectTrigger className="h-8 text-xs w-32">
+              <SelectValue placeholder="All Time" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Time</SelectItem>
+              <SelectItem value="this_month">This Month</SelectItem>
+              <SelectItem value="last_3_months">Last 3 Months</SelectItem>
             </SelectContent>
           </Select>
 
