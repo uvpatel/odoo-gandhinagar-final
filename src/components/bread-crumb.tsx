@@ -26,6 +26,10 @@ const routeLabels: Record<string, string> = {
   payroll: "Payroll",
   settings: "Settings",
   profile: "Profile",
+  contracts: "Contracts",
+  active: "Active",
+  expiring: "Expiring Soon",
+  groups: "Contract Groups",
 }
 
 function formatSegment(segment: string) {

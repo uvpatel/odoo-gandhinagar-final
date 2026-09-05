@@ -74,6 +74,18 @@ export const routeRules: RouteRule[] = [
 
   // Contracts module
   {
+    path: "/contracts/groups",
+    roles: ["hr_manager", "payroll_user", "payroll_manager", "admin"],
+  },
+  {
+    path: "/contracts/expiring",
+    roles: ["hr_manager", "payroll_user", "payroll_manager", "admin"],
+  },
+  {
+    path: "/contracts/active",
+    roles: ["hr_manager", "payroll_user", "payroll_manager", "admin"],
+  },
+  {
     path: "/contracts",
     roles: ["hr_manager", "payroll_user", "payroll_manager", "admin"],
   },

@@ -57,7 +57,19 @@ export async function GET(request: NextRequest) {
     }
 
     if (status && status !== "all") {
-      conditions.push(eq(contracts.status, status as any));
+      if (status === "expiring") {
+        const todayStr = new Date().toISOString().split("T")[0];
+        const sixtyDaysLater = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+        conditions.push(
+          and(
+            eq(contracts.status, "active"),
+            gte(contracts.endDate, todayStr),
+            lte(contracts.endDate, sixtyDaysLater)
+          )
+        );
+      } else {
+        conditions.push(eq(contracts.status, status as any));
+      }
     }
 
     if (startDateFrom) {

@@ -3,16 +3,16 @@ import { ContractManagementView } from "@/features/contracts/components/contract
 
 export const dynamic = "force-dynamic";
 
-export default function ContractsPage() {
+export default function ExpiringContractsPage() {
   return (
     <React.Suspense
       fallback={
         <div className="p-8 text-center text-xs text-muted-foreground">
-          Loading contracts directory...
+          Loading expiring contracts...
         </div>
       }
     >
-      <ContractManagementView initialStatusFilter="all" initialViewMode="table" />
+      <ContractManagementView initialStatusFilter="expiring" initialViewMode="table" />
     </React.Suspense>
   );
 }

@@ -30,7 +30,7 @@ import {
   type SalaryStructureOption,
   type ContractStatus,
 } from "../types";
-import { checkContractOverlapInMemory } from "@/server/services/payroll/contract-resolver";
+import { checkContractOverlapInMemory } from "../utils/contract-validation";
 
 interface ContractFormDialogProps {
   open: boolean;

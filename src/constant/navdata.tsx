@@ -152,11 +152,15 @@ export const data: NavData = {
         },
         {
           title: "Active Contracts",
-          url: "/contracts?status=active",
+          url: "/contracts/active",
         },
         {
           title: "Expiring Contracts",
-          url: "/contracts?status=expiring",
+          url: "/contracts/expiring",
+        },
+        {
+          title: "Contract Groups",
+          url: "/contracts/groups",
         },
       ],
     },

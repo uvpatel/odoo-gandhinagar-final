@@ -39,8 +39,16 @@ export function NavMain({
   const isChildActive = React.useCallback(
     (subUrl: string) => {
       const cleanSub = subUrl.split("?")[0]
-      if (cleanSub === "/dashboard") {
-        return pathname === "/dashboard"
+      if (
+        cleanSub === "/dashboard" ||
+        cleanSub === "/contracts" ||
+        cleanSub === "/attendance" ||
+        cleanSub === "/payroll" ||
+        cleanSub === "/time-off" ||
+        cleanSub === "/employees" ||
+        cleanSub === "/reports"
+      ) {
+        return pathname === cleanSub
       }
       return pathname === cleanSub || pathname.startsWith(cleanSub + "/")
     },

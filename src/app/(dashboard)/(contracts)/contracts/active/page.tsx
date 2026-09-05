@@ -3,16 +3,16 @@ import { ContractManagementView } from "@/features/contracts/components/contract
 
 export const dynamic = "force-dynamic";
 
-export default function ContractsPage() {
+export default function ActiveContractsPage() {
   return (
     <React.Suspense
       fallback={
         <div className="p-8 text-center text-xs text-muted-foreground">
-          Loading contracts directory...
+          Loading active contracts...
         </div>
       }
     >
-      <ContractManagementView initialStatusFilter="all" initialViewMode="table" />
+      <ContractManagementView initialStatusFilter="active" initialViewMode="table" />
     </React.Suspense>
   );
 }
