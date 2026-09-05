@@ -39,6 +39,10 @@ export function NavUser({
    const router = useRouter();
    
    async function handleLogout() {
+    try {
+      localStorage.removeItem("odoo_user_role");
+      sessionStorage.removeItem("odoo_user_role");
+    } catch {}
     await authClient.signOut({
       fetchOptions: {
         onSuccess: () => {
