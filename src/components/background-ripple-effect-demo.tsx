@@ -12,7 +12,7 @@ export default function BackgroundRippleEffectDemo() {
           PeoplePay360: HR & Payroll
         </h2>
         <p className="relative z-10 mx-auto mt-4 max-w-xl text-center text-neutral-800 dark:text-neutral-500">
-          An Integrated Human Resource and Payroll Operations Platform.
+          An Integrated Human Resource and Payroll Operations Platform that streamlines HR processes, enhances employee experience.
         </p>
         <NoiseBackgroundDemo />
       </div>

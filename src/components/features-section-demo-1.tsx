@@ -5,12 +5,12 @@ export default function FeaturesSectionDemo() {
   return (
     <div className="py-20 lg:py-40">
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-10 md:gap-2 max-w-7xl mx-auto">
-        {grid.map((feature) => (
+        {grid.map((feature, index) => (
           <div
             key={feature.title}
             className="relative bg-gradient-to-b dark:from-neutral-900 from-neutral-100 dark:to-neutral-950 to-white p-6 rounded-3xl overflow-hidden"
           >
-            <Grid size={20} />
+            <Grid size={20} pattern={defaultPatterns[index % defaultPatterns.length]} />
             <p className="text-base font-bold text-neutral-800 dark:text-white relative z-20">
               {feature.title}
             </p>
@@ -68,6 +68,17 @@ const grid = [
 ];
 
 
+const defaultPatterns = [
+  [[7, 1], [8, 2], [9, 3], [7, 4], [10, 2]],
+  [[8, 1], [7, 3], [10, 2], [9, 5], [8, 4]],
+  [[9, 2], [8, 4], [7, 1], [10, 3], [9, 6]],
+  [[7, 2], [8, 5], [9, 1], [10, 4], [7, 6]],
+  [[8, 3], [9, 2], [7, 5], [10, 1], [8, 6]],
+  [[10, 2], [7, 4], [8, 1], [9, 3], [10, 5]],
+  [[7, 3], [9, 4], [8, 2], [10, 6], [7, 1]],
+  [[8, 2], [10, 3], [9, 5], [7, 2], [8, 6]],
+];
+
 export const Grid = ({
   pattern,
   size,
@@ -75,13 +86,7 @@ export const Grid = ({
   pattern?: number[][];
   size?: number;
 }) => {
-  const p = pattern ?? [
-    [Math.floor(Math.random() * 4) + 7, Math.floor(Math.random() * 6) + 1],
-    [Math.floor(Math.random() * 4) + 7, Math.floor(Math.random() * 6) + 1],
-    [Math.floor(Math.random() * 4) + 7, Math.floor(Math.random() * 6) + 1],
-    [Math.floor(Math.random() * 4) + 7, Math.floor(Math.random() * 6) + 1],
-    [Math.floor(Math.random() * 4) + 7, Math.floor(Math.random() * 6) + 1],
-  ];
+  const p = pattern ?? defaultPatterns[0];
   return (
     <div className="pointer-events-none absolute left-1/2 top-0  -ml-20 -mt-2 h-full w-full [mask-image:linear-gradient(white,transparent)]">
       <div className="absolute inset-0 bg-gradient-to-r  [mask-image:radial-gradient(farthest-side_at_top,white,transparent)] dark:from-zinc-900/30 from-zinc-100/30 to-zinc-300/30 dark:to-zinc-900/30 opacity-100">
@@ -123,10 +128,10 @@ export function GridPattern({ width, height, x, y, squares, ...props }: any) {
       />
       {squares && (
         <svg x={x} y={y} className="overflow-visible">
-          {squares.map(([x, y]: any) => (
+          {squares.map(([x, y]: [number, number], idx: number) => (
             <rect
               strokeWidth="0"
-              key={`${x}-${y}`}
+              key={`${x}-${y}-${idx}`}
               width={width + 1}
               height={height + 1}
               x={x * width}
