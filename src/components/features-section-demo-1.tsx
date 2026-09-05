@@ -26,46 +26,47 @@ export default function FeaturesSectionDemo() {
 
 const grid = [
   {
-    title: "HIPAA and SOC2 Compliant",
+    title: "Complete Employee Management",
     description:
-      "Our applications are HIPAA and SOC2 compliant, your data is safe with us, always.",
+      "Manage employee profiles, departments, job positions, contracts, salary information, and complete employment history from one place.",
   },
   {
-    title: "Automated Social Media Posting",
+    title: "Smart Attendance Tracking",
     description:
-      "Schedule and automate your social media posts across multiple platforms to save time and maintain a consistent online presence.",
+      "Track employee check-ins, check-outs, worked hours, overtime, attendance exceptions, and manual corrections.",
   },
   {
-    title: "Advanced Analytics",
+    title: "Time Off Management",
     description:
-      "Gain insights into your social media performance with detailed analytics and reporting tools to measure engagement and ROI.",
+      "Handle leave requests, approvals, allocations, leave types, and employee balances through a structured approval workflow.",
   },
   {
-    title: "Content Calendar",
+    title: "Automated Payroll Processing",
     description:
-      "Plan and organize your social media content with an intuitive calendar view, ensuring you never miss a post.",
+      "Create payruns, select eligible employees, compute salaries, validate payroll, and track payment status efficiently.",
   },
   {
-    title: "Audience Targeting",
+    title: "Flexible Salary Structures",
     description:
-      "Reach the right audience with advanced targeting options, including demographics, interests, and behaviors.",
+      "Configure reusable salary structures and ordered rules for basic pay, allowances, deductions, gross salary, and net salary.",
   },
   {
-    title: "Social Listening",
+    title: "Payslips & Employee Delivery",
     description:
-      "Monitor social media conversations and trends to stay informed about what your audience is saying and respond in real-time.",
+      "Generate professional payslip PDFs and securely distribute payslips to employees through bulk email delivery.",
   },
   {
-    title: "Customizable Templates",
+    title: "Payroll Analytics",
     description:
-      "Create stunning social media posts with our customizable templates, designed to fit your brand's unique style and voice.",
+      "Monitor payroll costs, salary trends, attendance insights, leave activity, and department-level expenses from interactive dashboards.",
   },
   {
-    title: "Collaboration Tools",
+    title: "Role-Based Access Control",
     description:
-      "Work seamlessly with your team using our collaboration tools, allowing you to assign tasks, share drafts, and provide feedback in real-time.",
+      "Secure HR and payroll operations with dedicated permissions for employees, HR managers, payroll users, payroll managers, and administrators.",
   },
 ];
+
 
 export const Grid = ({
   pattern,
