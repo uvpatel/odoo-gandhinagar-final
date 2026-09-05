@@ -3,7 +3,16 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { db } from "@/db/index";
 import * as schema from "@/db/schema/auth-schema";
 import { admin } from "better-auth/plugins"
+import {
+  ac,
+  employeeRole,
+  hrManagerRole,
+  payrollUserRole,
+  payrollManagerRole,
+  adminRole,
+} from "@/lib/auth/permission"
 
+import { organization } from "better-auth/plugins"
 
 
 export const auth = betterAuth({
@@ -28,6 +37,16 @@ export const auth = betterAuth({
         }, 
     },
      plugins: [
-        admin() 
-    ]
+    organization({
+      ac,
+
+      roles: {
+        employee: employeeRole,
+        hr_manager: hrManagerRole,
+        payroll_user: payrollUserRole,
+        payroll_manager: payrollManagerRole,
+        admin: adminRole,
+      },
+    }),
+  ],
 });
