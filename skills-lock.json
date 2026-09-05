@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "skills": {
+    "fullstack-architect": {
+      "source": "uvpatel/urvil-dev-skills",
+      "sourceType": "github",
+      "skillPath": "skills/fullstack-architect/SKILL.md",
+      "computedHash": "cb7dea107a225d6ffb3b225a590aecbf01eacf1a093227d929b3c041371d424e"
+    },
+    "nextjs-ai": {
+      "source": "uvpatel/urvil-dev-skills",
+      "sourceType": "github",
+      "skillPath": "skills/nextjs-ai/SKILL.md",
+      "computedHash": "32ce690ff5c6c2421ba0dc5f7a856f8c2b9dd1196ac3a1de3e93061ab9b60267"
+    },
+    "nextjs-auth": {
+      "source": "uvpatel/urvil-dev-skills",
+      "sourceType": "github",
+      "skillPath": "skills/nextjs-auth/SKILL.md",
+      "computedHash": "2a157bf68c0872d75c0d876069a05b916e9cdcaf38aee82e875f1a3f62c08f01"
+    },
+    "nextjs-code-review": {
+      "source": "uvpatel/urvil-dev-skills",
+      "sourceType": "github",
+      "skillPath": "skills/nextjs-code-review/SKILL.md",
+      "computedHash": "4309861dbd439f0c8f7c7f99e7e727628a2824ddf0eff2c533794dd695a88169"
+    },
+    "nextjs-database": {
+      "source": "uvpatel/urvil-dev-skills",
+      "sourceType": "github",
+      "skillPath": "skills/nextjs-database/SKILL.md",
+      "computedHash": "2460db931dd532dbcacc15c4c24fef123eef808589b4d7fd57edf1f16a63d6f2"
+    },
+    "nextjs-debugging": {
+      "source": "uvpatel/urvil-dev-skills",
+      "sourceType": "github",
+      "skillPath": "skills/nextjs-debugging/SKILL.md",
+      "computedHash": "e065328cfd74cfd046baafbaf98474d6f2aabee973ea8826bf312915ffd83acc"
+    },
+    "nextjs-production": {
+      "source": "uvpatel/urvil-dev-skills",
+      "sourceType": "github",
+      "skillPath": "skills/nextjs-production/SKILL.md",
+      "computedHash": "6da97c8243d36b8cdfb53cc87a1bda89073a9b2ec84e4de66bd518a4d06f8b48"
+    },
+    "nextjs-ui": {
+      "source": "uvpatel/urvil-dev-skills",
+      "sourceType": "github",
+      "skillPath": "skills/nextjs-ui/SKILL.md",
+      "computedHash": "9a6d188898866add5758d0f22f83efa6f41f65a0cc98d8b14b440cb5ccf7b256"
+    }
+  }
+}

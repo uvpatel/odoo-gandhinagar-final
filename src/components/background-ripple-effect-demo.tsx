@@ -1,7 +1,6 @@
 "use client";
 import React from "react";
 import { BackgroundRippleEffect } from "@/components/ui/background-ripple-effect";
-import HoverBorderGradientDemo from "./hover-border-gradient-demo";
 
 export default function BackgroundRippleEffectDemo() {
   return (
@@ -16,7 +15,6 @@ export default function BackgroundRippleEffectDemo() {
           sections OR Call to Action sections. I beg you don&apos;t use it
           everywhere.
         </p>
-        <HoverBorderGradientDemo />
       </div>
     </div>
   );
