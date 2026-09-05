@@ -76,11 +76,10 @@ export function StepEmployees() {
   } = useQuery<{ data: EligibleEmployee[] }>({
     queryKey: ["eligible-employees", periodStart, periodEnd, salaryStructureId],
     queryFn: async () => {
-      const params = new URLSearchParams({
-        periodStart,
-        periodEnd,
-        salaryStructureId,
-      });
+      const params = new URLSearchParams();
+      if (periodStart) params.set("startDate", periodStart);
+      if (periodEnd) params.set("endDate", periodEnd);
+      if (salaryStructureId) params.set("structureId", salaryStructureId);
       const res = await fetch(`/api/payroll/payruns/eligible-employees?${params.toString()}`);
       if (!res.ok) {
         const err = await res.json();

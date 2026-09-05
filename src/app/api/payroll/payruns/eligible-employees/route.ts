@@ -7,9 +7,12 @@ export async function GET(request: NextRequest) {
     await requirePermission("payrun", "create", request.headers);
 
     const { searchParams } = new URL(request.url);
-    const startDate = searchParams.get("startDate");
-    const endDate = searchParams.get("endDate");
-    const structureId = searchParams.get("structureId") || undefined;
+    const startDate = searchParams.get("startDate") || searchParams.get("periodStart");
+    const endDate = searchParams.get("endDate") || searchParams.get("periodEnd");
+    const structureId =
+      searchParams.get("structureId") ||
+      searchParams.get("salaryStructureId") ||
+      undefined;
 
     if (!startDate || !endDate) {
       return NextResponse.json(

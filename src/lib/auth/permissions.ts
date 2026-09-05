@@ -349,14 +349,16 @@ export const payrollUserRole = ac.newRole({
     "delete",
   ],
 
-  // READ ONLY
   salaryStructure: [
     "read",
+    "create",
+    "update",
   ],
 
-  // READ ONLY
   salaryRule: [
     "read",
+    "create",
+    "update",
   ],
 
   payrun: [

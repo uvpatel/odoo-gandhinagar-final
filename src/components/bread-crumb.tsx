@@ -62,16 +62,17 @@ export function AppBreadcrumb() {
                 className={!isLast ? "hidden md:inline-flex" : undefined}
               >
                 {isLast ? (
-                  <BreadcrumbPage>
-                    {formatSegment(segment)}
-                  </BreadcrumbPage>
-                ) : (
-                  <BreadcrumbLink >
-                    <Link href={href}>
-                      {formatSegment(segment)}
-                    </Link>
-                  </BreadcrumbLink>
-                )}
+  <BreadcrumbPage>
+    {formatSegment(segment)}
+  </BreadcrumbPage>
+) : (
+  <Link
+    href={href}
+    className="transition-colors hover:text-foreground"
+  >
+    {formatSegment(segment)}
+  </Link>
+)}
               </BreadcrumbItem>
 
               {!isLast && (
