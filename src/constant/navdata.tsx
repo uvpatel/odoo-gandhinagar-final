@@ -112,10 +112,6 @@ export const data: NavData = {
             title: "Analytics",
             url: "/dashboard/analytics",
           },
-          {
-            title: "Reports",
-            url: "/dashboard/reports",
-        }
       ],
     },
 
