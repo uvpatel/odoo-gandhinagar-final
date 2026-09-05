@@ -5,6 +5,18 @@ import * as schema from "@/db/schema";
 import { admin } from "better-auth/plugins";
 import { ac, roles } from "./permissions";
 
+function cleanEnv(val?: string): string {
+  if (!val) return "";
+  let s = val.trim();
+  if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+    s = s.slice(1, -1).trim();
+  }
+  if (s.startsWith("=")) {
+    s = s.slice(1).trim();
+  }
+  return s;
+}
+
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
     provider: "pg",
@@ -31,12 +43,12 @@ export const auth = betterAuth({
   },
   socialProviders: {
     github: {
-      clientId: process.env.GITHUB_CLIENT_ID as string,
-      clientSecret: process.env.GITHUB_CLIENT_SECRET as string,
+      clientId: cleanEnv(process.env.GITHUB_CLIENT_ID),
+      clientSecret: cleanEnv(process.env.GITHUB_CLIENT_SECRET),
     },
     google: {
-      clientId: process.env.GOOGLE_CLIENT_ID as string,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
+      clientId: cleanEnv(process.env.GOOGLE_CLIENT_ID),
+      clientSecret: cleanEnv(process.env.GOOGLE_CLIENT_SECRET),
     },
   },
   plugins: [
