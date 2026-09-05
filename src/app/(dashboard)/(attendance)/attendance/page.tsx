@@ -120,6 +120,23 @@ function AttendanceContent() {
   const canUpdate = can("attendance", "update");
   const canDelete = can("attendance", "delete");
 
+  const fetchActiveStatus = React.useCallback(async () => {
+    try {
+      const res = await fetch("/api/attendance/check-in");
+      const statusData = await res.json();
+      if (statusData.isCheckedIn && statusData.activeRecord?.checkIn) {
+        setIsCheckedIn(true);
+        setActiveSessionStart(new Date(statusData.activeRecord.checkIn));
+      } else {
+        setIsCheckedIn(false);
+        setActiveSessionStart(null);
+      }
+    } catch {
+      setIsCheckedIn(false);
+      setActiveSessionStart(null);
+    }
+  }, []);
+
   const fetchData = React.useCallback(async () => {
     try {
       setIsLoading(true);
@@ -137,20 +154,6 @@ function AttendanceContent() {
 
       if (attData.data) {
         setAttendanceList(attData.data);
-
-        // Check if user has an active check-in today
-        const todayStr = new Date().toISOString().split("T")[0];
-        const userTodayRecord = attData.data.find(
-          (a: AttendanceItem) => a.attendanceDate === todayStr && a.checkIn && !a.checkOut
-        );
-
-        if (userTodayRecord && userTodayRecord.checkIn) {
-          setIsCheckedIn(true);
-          setActiveSessionStart(new Date(userTodayRecord.checkIn));
-        } else {
-          setIsCheckedIn(false);
-          setActiveSessionStart(null);
-        }
       }
 
       if (empData.data) setEmployeesList(empData.data);
@@ -163,8 +166,9 @@ function AttendanceContent() {
   }, [isTodayOnly, employeeFilter, searchTerm]);
 
   React.useEffect(() => {
+    fetchActiveStatus();
     fetchData();
-  }, [fetchData]);
+  }, [fetchActiveStatus, fetchData]);
 
   // Live timer for check-in widget
   React.useEffect(() => {
@@ -220,8 +224,6 @@ function AttendanceContent() {
         toast.success("Checked in successfully!", {
           description: `Timestamp: ${new Date().toLocaleTimeString()}`,
         });
-        setIsCheckedIn(true);
-        setActiveSessionStart(new Date());
       } else {
         // Perform Check-out
         const res = await fetch("/api/attendance/check-out", { method: "POST" });
@@ -231,12 +233,12 @@ function AttendanceContent() {
         toast.success("Checked out successfully!", {
           description: `Total duration recorded. Have a great day!`,
         });
-        setIsCheckedIn(false);
-        setActiveSessionStart(null);
       }
-      fetchData();
+      await fetchActiveStatus();
+      await fetchData();
     } catch (err: any) {
       toast.error("Action failed", { description: err.message });
+      await fetchActiveStatus();
     } finally {
       setIsActionPending(false);
     }

@@ -50,6 +50,23 @@ export default function MyAttendancePage() {
   const [elapsedSeconds, setElapsedSeconds] = React.useState(0);
   const [isPending, setIsPending] = React.useState(false);
 
+  const fetchActiveStatus = React.useCallback(async () => {
+    try {
+      const res = await fetch("/api/attendance/check-in");
+      const statusData = await res.json();
+      if (statusData.isCheckedIn && statusData.activeRecord?.checkIn) {
+        setIsCheckedIn(true);
+        setActiveStart(new Date(statusData.activeRecord.checkIn));
+      } else {
+        setIsCheckedIn(false);
+        setActiveStart(null);
+      }
+    } catch {
+      setIsCheckedIn(false);
+      setActiveStart(null);
+    }
+  }, []);
+
   const fetchData = React.useCallback(async () => {
     try {
       setIsLoading(true);
@@ -57,18 +74,6 @@ export default function MyAttendancePage() {
       const data = await res.json();
       if (data.data) {
         setAttendanceList(data.data);
-        const todayStr = new Date().toISOString().split("T")[0];
-        const todayRec = data.data.find(
-          (a: AttendanceItem) => a.attendanceDate === todayStr && a.checkIn && !a.checkOut
-        );
-
-        if (todayRec && todayRec.checkIn) {
-          setIsCheckedIn(true);
-          setActiveStart(new Date(todayRec.checkIn));
-        } else {
-          setIsCheckedIn(false);
-          setActiveStart(null);
-        }
       }
     } catch (err) {
       console.error("Failed to load my attendance:", err);
@@ -78,8 +83,9 @@ export default function MyAttendancePage() {
   }, []);
 
   React.useEffect(() => {
+    fetchActiveStatus();
     fetchData();
-  }, [fetchData]);
+  }, [fetchActiveStatus, fetchData]);
 
   // Timer interval for elapsed time
   React.useEffect(() => {
@@ -110,20 +116,18 @@ export default function MyAttendancePage() {
         toast.success("Checked in successfully!", {
           description: `Timestamp: ${new Date().toLocaleTimeString()}`,
         });
-        setIsCheckedIn(true);
-        setActiveStart(new Date());
       } else {
         const res = await fetch("/api/attendance/check-out", { method: "POST" });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Check-out failed");
 
         toast.success("Checked out successfully!");
-        setIsCheckedIn(false);
-        setActiveStart(null);
       }
-      fetchData();
+      await fetchActiveStatus();
+      await fetchData();
     } catch (err: any) {
       toast.error("Action failed", { description: err.message });
+      await fetchActiveStatus();
     } finally {
       setIsPending(false);
     }
