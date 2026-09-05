@@ -1,45 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
-
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ payslipId: string }> }
-) {
-  const { payslipId } = await params;
-  return NextResponse.json({
-    message: "GET request successful",
-    payslipId,
-  });
-}
+import { requirePermission, AuthorizationError } from "@/lib/auth/authorization";
+import { sendSinglePayslipExecution } from "@/features/payroll/services/payroll.service";
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ payslipId: string }> }
 ) {
-  const { payslipId } = await params;
-  return NextResponse.json({
-    message: "POST request successful",
-    payslipId,
-  });
-}
+  try {
+    await requirePermission("payslip", "send", request.headers);
+    const { payslipId } = await params;
 
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ payslipId: string }> }
-) {
-  const { payslipId } = await params;
-  return NextResponse.json({
-    message: "PUT request successful",
-    payslipId,
-  });
-}
+    const result = await sendSinglePayslipExecution(payslipId);
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ payslipId: string }> }
-) {
-  const { payslipId } = await params;
-  return NextResponse.json({
-    message: "DELETE request successful",
-    payslipId,
-  });
+    return NextResponse.json({
+      data: result,
+      message: `Payslip email sent successfully to ${result.email}`,
+    });
+  } catch (error: any) {
+    const status = error.status || (error instanceof AuthorizationError ? error.status : 500);
+    return NextResponse.json(
+      { error: error.message || "Failed to send payslip email" },
+      { status }
+    );
+  }
 }

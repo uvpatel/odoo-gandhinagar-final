@@ -133,10 +133,24 @@ export default async function MyPayslipsPage() {
                   Worked: {slip.workedDays} Days ({slip.workedHours} Hours)
                 </div>
 
-                <Button variant="outline" size="sm" className="w-full">
-                  <DownloadIcon className="mr-2 size-4" />
-                  Download Statement
-                </Button>
+                <div className="flex items-center gap-2 pt-1">
+                  <a
+                    href={`/api/payroll/payslips/${slip.id}/pdf`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 inline-flex items-center justify-center rounded-lg border border-border bg-background py-1.5 px-3 text-xs font-medium hover:bg-muted transition-colors gap-1.5"
+                  >
+                    <DownloadIcon className="size-3.5" />
+                    <span>PDF Slip</span>
+                  </a>
+
+                  <a
+                    href={`/payroll/payslips/${slip.id}`}
+                    className="flex-1 inline-flex items-center justify-center rounded-lg bg-primary py-1.5 px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                  >
+                    View Details
+                  </a>
+                </div>
               </CardContent>
             </Card>
           ))}
