@@ -1,7 +1,5 @@
-import React from 'react'
+import JobPositionsPage from "@/app/(dashboard)/(employees)/employees/job-positions/page";
 
 export default function JobPositionsSettingsPage() {
-  return (
-    <div>JobPositionsSettingsPage</div>
-  )
+  return <JobPositionsPage />;
 }

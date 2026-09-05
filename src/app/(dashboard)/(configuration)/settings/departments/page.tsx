@@ -1,7 +1,5 @@
-import React from 'react'
+import DepartmentsPage from "@/app/(dashboard)/(employees)/employees/departments/page";
 
 export default function DepartmentSettingsPage() {
-  return (
-    <div>DepartmentSettingsPage</div>
-  )
+  return <DepartmentsPage />;
 }
