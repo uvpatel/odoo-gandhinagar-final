@@ -281,41 +281,7 @@ export const data: NavData = {
     // ─────────────────────────────────────────────
     // CONFIGURATION
     // ─────────────────────────────────────────────
-    {
-      title: "Configuration",
-      url: "/settings",
-      icon: <Settings2Icon />,
-      items: [
-        {
-          title: "Organization",
-          url: "/settings/organization",
-        },
-        {
-          title: "Departments",
-          url: "/settings/departments",
-        },
-        {
-          title: "Job Positions",
-          url: "/settings/job-positions",
-        },
-        {
-          title: "Working Schedules",
-          url: "/settings/working-schedules",
-        },
-        {
-          title: "Time Off Types",
-          url: "/settings/time-off-types",
-        },
-        {
-          title: "Salary Structures",
-          url: "/settings/salary-structures",
-        },
-        {
-          title: "Salary Rules",
-          url: "/settings/salary-rules",
-        },
-      ],
-    },
+    
 
     // ─────────────────────────────────────────────
     // ADMIN
