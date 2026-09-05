@@ -46,6 +46,5 @@ export const payslipWarnings = pgTable(
   ],
 );
 
-export const payslipWarning = payslipWarnings;
 export type PayslipWarning = typeof payslipWarnings.$inferSelect;
 export type NewPayslipWarning = typeof payslipWarnings.$inferInsert;

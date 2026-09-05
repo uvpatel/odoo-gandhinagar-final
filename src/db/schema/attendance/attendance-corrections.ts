@@ -36,6 +36,5 @@ export const attendanceCorrections = pgTable(
   },
 );
 
-export const attendanceCorrection = attendanceCorrections;
 export type AttendanceCorrection = typeof attendanceCorrections.$inferSelect;
 export type NewAttendanceCorrection = typeof attendanceCorrections.$inferInsert;

@@ -22,8 +22,8 @@ export const sessions = pgTable("sessions", {
     .references(() => users.id, {
       onDelete: "cascade",
     }),
+  impersonatedBy: text("impersonated_by"),
 });
 
-export const session = sessions;
 export type Session = typeof sessions.$inferSelect;
 export type NewSession = typeof sessions.$inferInsert;

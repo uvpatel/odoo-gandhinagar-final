@@ -1,13 +1,6 @@
 import { createAuthClient } from "better-auth/react";
-import { organizationClient } from "better-auth/client/plugins";
-import {
-  ac,
-  employeeRole,
-  hrManagerRole,
-  payrollUserRole,
-  payrollManagerRole,
-  adminRole,
-} from "@/lib/permissions";
+import { adminClient } from "better-auth/client/plugins";
+import { ac, roles } from "@/lib/permissions";
 
 export const authClient = createAuthClient({
   baseURL:
@@ -15,15 +8,9 @@ export const authClient = createAuthClient({
     process.env.BETTER_AUTH_URL ||
     (typeof window !== "undefined" ? window.location.origin : "http://localhost:3000"),
   plugins: [
-    organizationClient({
+    adminClient({
       ac,
-      roles: {
-        employee: employeeRole,
-        hr_manager: hrManagerRole,
-        payroll_user: payrollUserRole,
-        payroll_manager: payrollManagerRole,
-        admin: adminRole,
-      },
+      roles,
     }),
   ],
 });

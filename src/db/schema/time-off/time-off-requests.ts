@@ -64,6 +64,5 @@ export const timeOffRequests = pgTable(
   ],
 );
 
-export const timeOffRequest = timeOffRequests;
 export type TimeOffRequest = typeof timeOffRequests.$inferSelect;
 export type NewTimeOffRequest = typeof timeOffRequests.$inferInsert;

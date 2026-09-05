@@ -38,6 +38,5 @@ export const salaryStructureRules = pgTable(
   ],
 );
 
-export const salaryStructureRule = salaryStructureRules;
 export type SalaryStructureRule = typeof salaryStructureRules.$inferSelect;
 export type NewSalaryStructureRule = typeof salaryStructureRules.$inferInsert;

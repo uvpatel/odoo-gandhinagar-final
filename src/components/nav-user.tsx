@@ -40,13 +40,16 @@ export function NavUser({
    
    async function handleLogout() {
     await authClient.signOut({
-  fetchOptions: {
-    onSuccess: () => {
-      router.push("/login"); // Redirect to your login page
-    },
-  },
-});
+      fetchOptions: {
+        onSuccess: () => {
+          router.push("/signin");
+        },
+      },
+    });
    }
+
+  const userRole = (session?.user as { role?: string })?.role || "employee";
+  const formattedRole = userRole.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
 
   return (
     <SidebarMenu>
@@ -59,16 +62,16 @@ export function NavUser({
           >
             <Avatar>
               <AvatarImage src={session?.user.image ?? " "} alt={user.name} />
-              <AvatarFallback>{session?.user.name?.charAt(0) ?? "C"}</AvatarFallback>
+              <AvatarFallback>{session?.user.name?.charAt(0) ?? "U"}</AvatarFallback>
             </Avatar>
             <div className="grid flex-1 text-left text-sm leading-tight">
-              <span className="truncate font-medium">{session?.user.name}</span>
-              <span className="truncate text-xs">{session?.user.email}</span>
+              <span className="truncate font-medium">{session?.user.name ?? "User"}</span>
+              <span className="truncate text-xs text-muted-foreground">{formattedRole}</span>
             </div>
             <ChevronsUpDownIcon className="ml-auto size-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent
-            className="w-fit"
+            className="w-56"
             side={isMobile ? "bottom" : "right"}
             align="end"
             sideOffset={4}
@@ -78,41 +81,37 @@ export function NavUser({
                 <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                   <Avatar>
                     <AvatarImage src={session?.user.image ?? " "} alt={user.name} />
-                    <AvatarFallback>{session?.user.name?.charAt(0) ?? "C"}</AvatarFallback>
+                    <AvatarFallback>{session?.user.name?.charAt(0) ?? "U"}</AvatarFallback>
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-medium">{session?.user.name}</span>
+                    <span className="truncate font-medium">{session?.user.name ?? "User"}</span>
                     <span className="truncate text-xs">{session?.user.email}</span>
+                    <span className="mt-0.5 inline-block w-fit rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                      {formattedRole}
+                    </span>
                   </div>
                 </div>
               </DropdownMenuLabel>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            
-
-           
             <DropdownMenuGroup>
               <DropdownMenuItem>
-                <BadgeCheckIcon
-                />
+                <BadgeCheckIcon />
                 Account
               </DropdownMenuItem>
               <DropdownMenuItem>
-                <CreditCardIcon
-                />
+                <CreditCardIcon />
                 Payroll
               </DropdownMenuItem>
               <DropdownMenuItem>
-                <BellIcon
-                />
+                <BellIcon />
                 Notifications
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <LogOutIcon
-              />
-              <Link href="/logout" onClick={handleLogout}> Log out </Link>
+            <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-destructive focus:text-destructive">
+              <LogOutIcon />
+              Log out
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

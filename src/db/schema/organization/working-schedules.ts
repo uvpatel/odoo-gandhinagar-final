@@ -30,6 +30,5 @@ export const workingSchedules = pgTable("working_schedules", {
     .notNull(),
 });
 
-export const workingSchedule = workingSchedules;
 export type WorkingSchedule = typeof workingSchedules.$inferSelect;
 export type NewWorkingSchedule = typeof workingSchedules.$inferInsert;

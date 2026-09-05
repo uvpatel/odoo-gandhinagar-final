@@ -60,6 +60,5 @@ export const payslipLines = pgTable(
   ],
 );
 
-export const payslipLine = payslipLines;
 export type PayslipLine = typeof payslipLines.$inferSelect;
 export type NewPayslipLine = typeof payslipLines.$inferInsert;

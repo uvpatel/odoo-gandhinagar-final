@@ -53,6 +53,5 @@ export const payruns = pgTable(
   ],
 );
 
-export const payrun = payruns;
 export type Payrun = typeof payruns.$inferSelect;
 export type NewPayrun = typeof payruns.$inferInsert;

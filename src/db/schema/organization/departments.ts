@@ -23,6 +23,5 @@ export const departments = pgTable("departments", {
     .notNull(),
 });
 
-export const department = departments;
 export type Department = typeof departments.$inferSelect;
 export type NewDepartment = typeof departments.$inferInsert;

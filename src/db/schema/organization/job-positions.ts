@@ -27,6 +27,5 @@ export const jobPositions = pgTable("job_positions", {
     .notNull(),
 });
 
-export const jobPosition = jobPositions;
 export type JobPosition = typeof jobPositions.$inferSelect;
 export type NewJobPosition = typeof jobPositions.$inferInsert;

@@ -15,6 +15,5 @@ export const verifications = pgTable("verifications", {
     .$defaultFn(() => new Date()),
 });
 
-export const verification = verifications;
 export type Verification = typeof verifications.$inferSelect;
 export type NewVerification = typeof verifications.$inferInsert;

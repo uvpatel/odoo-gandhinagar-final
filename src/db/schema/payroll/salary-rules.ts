@@ -72,6 +72,5 @@ export const salaryRules = pgTable("salary_rules", {
     .notNull(),
 });
 
-export const salaryRule = salaryRules;
 export type SalaryRule = typeof salaryRules.$inferSelect;
 export type NewSalaryRule = typeof salaryRules.$inferInsert;

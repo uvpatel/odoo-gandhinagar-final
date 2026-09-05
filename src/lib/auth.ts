@@ -2,15 +2,8 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { db } from "@/db/index";
 import * as schema from "@/db/schema";
-import { organization } from "better-auth/plugins";
-import {
-  ac,
-  employeeRole,
-  hrManagerRole,
-  payrollUserRole,
-  payrollManagerRole,
-  adminRole,
-} from "@/lib/permissions";
+import { admin } from "better-auth/plugins";
+import { ac, roles } from "@/lib/permissions";
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
@@ -27,22 +20,31 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
   },
+  user: {
+    additionalFields: {
+      role: {
+        type: "string",
+        defaultValue: "employee",
+        input: true,
+      },
+    },
+  },
   socialProviders: {
     github: {
       clientId: process.env.GITHUB_CLIENT_ID as string,
       clientSecret: process.env.GITHUB_CLIENT_SECRET as string,
     },
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID as string,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
+    },
   },
   plugins: [
-    organization({
+    admin({
+      defaultRole: "employee",
+      adminRoles: ["admin"],
+      roles,
       ac,
-      roles: {
-        employee: employeeRole,
-        hr_manager: hrManagerRole,
-        payroll_user: payrollUserRole,
-        payroll_manager: payrollManagerRole,
-        admin: adminRole,
-      },
     }),
   ],
 });

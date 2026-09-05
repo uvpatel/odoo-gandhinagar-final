@@ -286,7 +286,6 @@ export const data = {
     },
   ],
 
-  // Useful for your existing NavProjects component
   projects: [
     {
       name: "Employees",
@@ -300,18 +299,18 @@ export const data = {
     },
     {
       name: "Time Off",
-      url: "/time-off",
+      url: "/time-off/requests",
       icon: <ClipboardListIcon />,
+    },
+    {
+      name: "Contracts",
+      url: "/contracts",
+      icon: <FileTextIcon />,
     },
     {
       name: "Payroll",
       url: "/payroll/payruns",
       icon: <WalletCardsIcon />,
     },
-    {
-      name: "Payslips",
-      url: "/payroll/payslips",
-      icon: <ReceiptTextIcon />,
-    },
   ],
-}
+};

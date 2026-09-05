@@ -69,6 +69,5 @@ export const contracts = pgTable(
   ],
 );
 
-export const contract = contracts;
 export type Contract = typeof contracts.$inferSelect;
 export type NewContract = typeof contracts.$inferInsert;

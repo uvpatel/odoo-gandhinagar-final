@@ -57,6 +57,5 @@ export const timeOffAllocations = pgTable(
   ],
 );
 
-export const allocation = timeOffAllocations;
 export type TimeOffAllocation = typeof timeOffAllocations.$inferSelect;
 export type NewTimeOffAllocation = typeof timeOffAllocations.$inferInsert;

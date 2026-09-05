@@ -87,6 +87,5 @@ export const employees = pgTable(
   ],
 );
 
-export const employee = employees;
 export type Employee = typeof employees.$inferSelect;
 export type NewEmployee = typeof employees.$inferInsert;

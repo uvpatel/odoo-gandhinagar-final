@@ -24,6 +24,5 @@ export const workingScheduleLines = pgTable(
   },
 );
 
-export const workingScheduleLine = workingScheduleLines;
 export type WorkingScheduleLine = typeof workingScheduleLines.$inferSelect;
 export type NewWorkingScheduleLine = typeof workingScheduleLines.$inferInsert;

@@ -32,6 +32,5 @@ export const salaryStructures = pgTable(
   },
 );
 
-export const salaryStructure = salaryStructures;
 export type SalaryStructure = typeof salaryStructures.$inferSelect;
 export type NewSalaryStructure = typeof salaryStructures.$inferInsert;

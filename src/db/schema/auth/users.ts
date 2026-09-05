@@ -36,6 +36,5 @@ export const users = pgTable("users", {
     .notNull(),
 });
 
-export const user = users;
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;

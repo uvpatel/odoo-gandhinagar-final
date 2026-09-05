@@ -52,6 +52,5 @@ export const timeOffTypes = pgTable("time_off_types", {
     .notNull(),
 });
 
-export const timeOffType = timeOffTypes;
 export type TimeOffType = typeof timeOffTypes.$inferSelect;
 export type NewTimeOffType = typeof timeOffTypes.$inferInsert;
