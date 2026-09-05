@@ -1,4 +1,4 @@
-import { createAccessControl } from "better-auth/plugins/access"
+import { createAccessControl } from "better-auth/plugins/access";
 
 export const statement = {
   employee: [
@@ -8,14 +8,12 @@ export const statement = {
     "update",
     "delete",
   ],
-
   department: [
     "read",
     "create",
     "update",
     "delete",
   ],
-
   contract: [
     "read-self",
     "read",
@@ -23,14 +21,12 @@ export const statement = {
     "update",
     "delete",
   ],
-
   schedule: [
     "read",
     "create",
     "update",
     "delete",
   ],
-
   attendance: [
     "read-self",
     "read",
@@ -39,7 +35,6 @@ export const statement = {
     "update",
     "delete",
   ],
-
   timeOff: [
     "read-self",
     "read",
@@ -50,7 +45,6 @@ export const statement = {
     "approve",
     "refuse",
   ],
-
   allocation: [
     "read-self",
     "read",
@@ -59,21 +53,18 @@ export const statement = {
     "delete",
     "approve",
   ],
-
   salaryStructure: [
     "read",
     "create",
     "update",
     "delete",
   ],
-
   salaryRule: [
     "read",
     "create",
     "update",
     "delete",
   ],
-
   payrun: [
     "read",
     "create",
@@ -84,7 +75,6 @@ export const statement = {
     "mark-paid",
     "send",
   ],
-
   payslip: [
     "read-self",
     "read",
@@ -94,41 +84,34 @@ export const statement = {
     "print",
     "send",
   ],
-
   report: [
     "read",
   ],
-
   administration: [
     "manage-users",
     "manage-roles",
   ],
-} as const
+} as const;
 
-export const ac = createAccessControl(statement)
+export const ac = createAccessControl(statement);
 
 export const employeeRole = ac.newRole({
   employee: ["read-self"],
-
   contract: ["read-self"],
-
   attendance: [
     "read-self",
     "create-self",
   ],
-
   timeOff: [
     "read-self",
     "request",
   ],
-
   allocation: ["read-self"],
-
   payslip: [
     "read-self",
     "print",
   ],
-})
+});
 
 export const hrManagerRole = ac.newRole({
   employee: [
@@ -138,14 +121,12 @@ export const hrManagerRole = ac.newRole({
     "update",
     "delete",
   ],
-
   department: [
     "read",
     "create",
     "update",
     "delete",
   ],
-
   contract: [
     "read-self",
     "read",
@@ -153,14 +134,12 @@ export const hrManagerRole = ac.newRole({
     "update",
     "delete",
   ],
-
   schedule: [
     "read",
     "create",
     "update",
     "delete",
   ],
-
   attendance: [
     "read-self",
     "read",
@@ -169,7 +148,6 @@ export const hrManagerRole = ac.newRole({
     "update",
     "delete",
   ],
-
   timeOff: [
     "read-self",
     "read",
@@ -180,7 +158,6 @@ export const hrManagerRole = ac.newRole({
     "approve",
     "refuse",
   ],
-
   allocation: [
     "read-self",
     "read",
@@ -189,9 +166,8 @@ export const hrManagerRole = ac.newRole({
     "delete",
     "approve",
   ],
-
   report: ["read"],
-})
+});
 
 export const payrollUserRole = ac.newRole({
   employee: [
@@ -201,14 +177,12 @@ export const payrollUserRole = ac.newRole({
     "update",
     "delete",
   ],
-
   department: [
     "read",
     "create",
     "update",
     "delete",
   ],
-
   contract: [
     "read-self",
     "read",
@@ -216,14 +190,12 @@ export const payrollUserRole = ac.newRole({
     "update",
     "delete",
   ],
-
   schedule: [
     "read",
     "create",
     "update",
     "delete",
   ],
-
   attendance: [
     "read-self",
     "read",
@@ -232,7 +204,6 @@ export const payrollUserRole = ac.newRole({
     "update",
     "delete",
   ],
-
   timeOff: [
     "read-self",
     "read",
@@ -243,7 +214,6 @@ export const payrollUserRole = ac.newRole({
     "approve",
     "refuse",
   ],
-
   allocation: [
     "read-self",
     "read",
@@ -252,11 +222,8 @@ export const payrollUserRole = ac.newRole({
     "delete",
     "approve",
   ],
-
-  // READ ONLY
   salaryStructure: ["read"],
   salaryRule: ["read"],
-
   payrun: [
     "read",
     "create",
@@ -266,7 +233,6 @@ export const payrollUserRole = ac.newRole({
     "mark-paid",
     "send",
   ],
-
   payslip: [
     "read-self",
     "read",
@@ -275,9 +241,8 @@ export const payrollUserRole = ac.newRole({
     "print",
     "send",
   ],
-
   report: ["read"],
-})
+});
 
 export const payrollManagerRole = ac.newRole({
   employee: [
@@ -287,14 +252,12 @@ export const payrollManagerRole = ac.newRole({
     "update",
     "delete",
   ],
-
   department: [
     "read",
     "create",
     "update",
     "delete",
   ],
-
   contract: [
     "read-self",
     "read",
@@ -302,14 +265,12 @@ export const payrollManagerRole = ac.newRole({
     "update",
     "delete",
   ],
-
   schedule: [
     "read",
     "create",
     "update",
     "delete",
   ],
-
   attendance: [
     "read-self",
     "read",
@@ -318,7 +279,6 @@ export const payrollManagerRole = ac.newRole({
     "update",
     "delete",
   ],
-
   timeOff: [
     "read-self",
     "read",
@@ -329,7 +289,6 @@ export const payrollManagerRole = ac.newRole({
     "approve",
     "refuse",
   ],
-
   allocation: [
     "read-self",
     "read",
@@ -338,21 +297,18 @@ export const payrollManagerRole = ac.newRole({
     "delete",
     "approve",
   ],
-
   salaryStructure: [
     "read",
     "create",
     "update",
     "delete",
   ],
-
   salaryRule: [
     "read",
     "create",
     "update",
     "delete",
   ],
-
   payrun: [
     "read",
     "create",
@@ -363,7 +319,6 @@ export const payrollManagerRole = ac.newRole({
     "mark-paid",
     "send",
   ],
-
   payslip: [
     "read-self",
     "read",
@@ -373,19 +328,14 @@ export const payrollManagerRole = ac.newRole({
     "print",
     "send",
   ],
-
   report: ["read"],
-})
+});
 
 export const adminRole = ac.newRole({
   employee: ["read-self", "read", "create", "update", "delete"],
-
   department: ["read", "create", "update", "delete"],
-
   contract: ["read-self", "read", "create", "update", "delete"],
-
   schedule: ["read", "create", "update", "delete"],
-
   attendance: [
     "read-self",
     "read",
@@ -394,7 +344,6 @@ export const adminRole = ac.newRole({
     "update",
     "delete",
   ],
-
   timeOff: [
     "read-self",
     "read",
@@ -405,7 +354,6 @@ export const adminRole = ac.newRole({
     "approve",
     "refuse",
   ],
-
   allocation: [
     "read-self",
     "read",
@@ -414,10 +362,8 @@ export const adminRole = ac.newRole({
     "delete",
     "approve",
   ],
-
   salaryStructure: ["read", "create", "update", "delete"],
   salaryRule: ["read", "create", "update", "delete"],
-
   payrun: [
     "read",
     "create",
@@ -428,7 +374,6 @@ export const adminRole = ac.newRole({
     "mark-paid",
     "send",
   ],
-
   payslip: [
     "read-self",
     "read",
@@ -438,20 +383,17 @@ export const adminRole = ac.newRole({
     "print",
     "send",
   ],
-
   report: ["read"],
-
   administration: [
     "manage-users",
     "manage-roles",
   ],
-})
-
+});
 
 export const roles = {
   employee: employeeRole,
   hr_manager: hrManagerRole,
-  payroll_user: payrollUserRole,
-  payroll_manager: payrollManagerRole,
+  hr_payroll_user: payrollUserRole,
+  hr_payroll_manager: payrollManagerRole,
   admin: adminRole,
-}
+};
