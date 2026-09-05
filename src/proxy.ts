@@ -1,22 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { canAccessRoute, isGuardedRoute } from "@/lib/auth/route-permissions";
+import { normalizeRole } from "@/lib/auth/permissions";
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   const isAuthRoute = pathname.startsWith("/signin") || pathname.startsWith("/signup");
-  const isProtectedRoute =
-    pathname.startsWith("/dashboard") ||
-    pathname.startsWith("/employees") ||
-    pathname.startsWith("/contracts") ||
-    pathname.startsWith("/time-off") ||
-    pathname.startsWith("/payroll") ||
-    pathname.startsWith("/attendance") ||
-    pathname.startsWith("/reports") ||
-    pathname.startsWith("/settings") ||
-    pathname.startsWith("/admin");
+  const isProtected = isGuardedRoute(pathname);
 
-  if (!isAuthRoute && !isProtectedRoute) {
+  if (!isAuthRoute && !isProtected) {
     return NextResponse.next();
   }
 
@@ -35,32 +28,16 @@ export async function proxy(request: NextRequest) {
   }
 
   // Redirect unauthenticated users to signin
-  if (isProtectedRoute && !session) {
+  if (isProtected && !session) {
     return NextResponse.redirect(new URL("/signin", request.url));
   }
 
-  // Role-based route access controls
-  if (session && isProtectedRoute) {
-    const userRole = (session.user as { role?: string })?.role || "employee";
+  // Role-based route access controls derived from central permissions
+  if (session && isProtected) {
+    const rawRole = (session.user as { role?: string })?.role;
+    const userRole = normalizeRole(rawRole);
 
-    // Administration routes: only Admin
-    if (pathname.startsWith("/admin") && userRole !== "admin") {
-      return NextResponse.redirect(new URL("/dashboard", request.url));
-    }
-
-    // Payroll routes: only Payroll users/managers and Admin
-    if (
-      pathname.startsWith("/payroll") &&
-      !["admin", "hr_payroll_manager", "hr_payroll_user"].includes(userRole)
-    ) {
-      return NextResponse.redirect(new URL("/dashboard", request.url));
-    }
-
-    // Company employee/contract directory management: only HR and Admin
-    if (
-      (pathname.startsWith("/employees") || pathname.startsWith("/contracts")) &&
-      !["admin", "hr_manager", "hr_payroll_manager", "hr_payroll_user"].includes(userRole)
-    ) {
+    if (!canAccessRoute(pathname, userRole)) {
       return NextResponse.redirect(new URL("/dashboard", request.url));
     }
   }
