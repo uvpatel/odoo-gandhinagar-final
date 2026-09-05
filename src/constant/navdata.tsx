@@ -22,8 +22,54 @@ import {
   AudioLinesIcon,
   TerminalIcon,
 } from "lucide-react"
+import {
+  type AppRole,
+  type ResourceName,
+  normalizeRole,
+  hasPermission,
+} from "@/lib/auth/permissions"
+import { canAccessRoute } from "@/lib/auth/route-permissions"
 
-export const data = {
+export type NavSubItem = {
+  title: string
+  url: string
+  roles?: AppRole[]
+  permission?: {
+    resource: ResourceName
+    action: string
+  }
+}
+
+export type NavMainItem = {
+  title: string
+  url: string
+  icon?: React.ReactNode
+  isActive?: boolean
+  roles?: AppRole[]
+  items?: NavSubItem[]
+}
+
+export type NavData = {
+  user: {
+    name: string
+    email: string
+    avatar: string
+  }
+  teams: {
+    name: string
+    logo: React.ReactNode
+    plan: string
+  }[]
+  navMain: NavMainItem[]
+  projects: {
+    name: string
+    url: string
+    icon: React.ReactNode
+    roles?: AppRole[]
+  }[]
+}
+
+export const data: NavData = {
   user: {
     name: "Urvil Patel",
     email: "urvil@example.com",
@@ -190,6 +236,11 @@ export const data = {
           url: "/payroll/payslips",
         },
         {
+          title: "My Payslips",
+          url: "/payroll/payslips/me",
+          permission: { resource: "payslip", action: "read-self" },
+        },
+        {
           title: "Salary Structures",
           url: "/payroll/salary-structures",
         },
@@ -314,3 +365,75 @@ export const data = {
     },
   ],
 };
+
+/**
+ * Filters the navigation items based on the user's role and permissions.
+ *
+ * Rules:
+ * - Omits top-level sections if the user lacks access to that section.
+ * - Filters sub-items according to explicit roles, permissions, or route access rules.
+ * - Omits parent sections when all their child items are restricted (e.g. Employee sees no Contracts, Employees, etc.).
+ * - Shows only "My ..." items for employees where applicable (My Attendance, My Time Off, My Payslips).
+ */
+export function getFilteredNavMain(rawRole?: string | null): NavMainItem[] {
+  const role = normalizeRole(rawRole);
+
+  return data.navMain
+    .map((section) => {
+      // 1. If section has explicit roles and user doesn't match, filter out
+      if (section.roles && !section.roles.includes(role)) {
+        return null;
+      }
+
+      // 2. If section has sub-items, filter each sub-item
+      if (section.items && section.items.length > 0) {
+        const filteredItems = section.items.filter((item) => {
+          // Explicit sub-item role check
+          if (item.roles && !item.roles.includes(role)) {
+            return false;
+          }
+
+          // Explicit sub-item permission check
+          if (item.permission) {
+            if (!hasPermission(role, item.permission.resource, item.permission.action as any)) {
+              return false;
+            }
+          }
+
+          // Route access check (strip query params)
+          const cleanPath = item.url.split("?")[0];
+          return canAccessRoute(cleanPath, role);
+        });
+
+        // Omit section if no sub-items are permitted
+        if (filteredItems.length === 0) {
+          return null;
+        }
+
+        return {
+          ...section,
+          items: filteredItems,
+        };
+      }
+
+      // 3. Section without sub-items: check route access directly
+      const cleanPath = section.url.split("?")[0];
+      if (!canAccessRoute(cleanPath, role)) {
+        return null;
+      }
+
+      return section;
+    })
+    .filter((item): item is NavMainItem => item !== null);
+}
+
+/**
+ * Filters project shortcuts based on the user's role.
+ */
+export function getFilteredProjects(rawRole?: string | null) {
+  const role = normalizeRole(rawRole);
+  return data.projects.filter((item) => {
+    const cleanPath = item.url.split("?")[0];
+    return canAccessRoute(cleanPath, role);
+  });
+}

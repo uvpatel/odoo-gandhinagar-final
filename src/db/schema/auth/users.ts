@@ -9,6 +9,8 @@ import {
 export const userRoleEnum = pgEnum("user_role", [
   "employee",
   "hr_manager",
+  "payroll_user",
+  "payroll_manager",
   "hr_payroll_user",
   "hr_payroll_manager",
   "admin",

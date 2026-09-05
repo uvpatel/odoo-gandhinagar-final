@@ -2,6 +2,9 @@ import React from 'react'
 
 export default function EmployeesPage() {
   return (
-    <div>EmployeesPage</div>
+    <div>EmployeesPage
+        {/* using fetch database emploee */}
+    </div>
+
   )
 }

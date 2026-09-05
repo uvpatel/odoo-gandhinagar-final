@@ -13,20 +13,20 @@ import {
   SidebarHeader,
   SidebarRail,
 } from "@/components/ui/sidebar"
-import { data } from "@/constant/navdata"
-
-// This is sample data.
-
+import { data, getFilteredNavMain } from "@/constant/navdata"
+import { useCan } from "@/hooks/use-permissions"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const { role } = useCan()
+  const filteredNavMain = React.useMemo(() => getFilteredNavMain(role), [role])
+
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
         <TeamSwitcher teams={data.teams} />
       </SidebarHeader>
       <SidebarContent>
-        <NavMain items={data.navMain} />
-  
+        <NavMain items={filteredNavMain} />
       </SidebarContent>
       <SidebarFooter>
         <NavUser user={data.user} />
