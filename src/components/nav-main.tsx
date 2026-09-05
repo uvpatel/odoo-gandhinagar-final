@@ -36,26 +36,58 @@ export function NavMain({
 }) {
   const pathname = usePathname()
 
+  const isChildActive = React.useCallback(
+    (subUrl: string) => {
+      const cleanSub = subUrl.split("?")[0]
+      if (cleanSub === "/dashboard") {
+        return pathname === "/dashboard"
+      }
+      return pathname === cleanSub || pathname.startsWith(cleanSub + "/")
+    },
+    [pathname]
+  )
+
+  // Track open state of collapsible sections
+  const [openSections, setOpenSections] = React.useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {}
+    for (const item of items) {
+      if (item.isActive) {
+        initial[item.title] = true
+      }
+    }
+    return initial
+  })
+
+  // Whenever the active route changes, expand the section that contains it
+  React.useEffect(() => {
+    for (const item of items) {
+      const hasActiveChild = item.items?.some((subItem) => isChildActive(subItem.url))
+      if (hasActiveChild) {
+        setOpenSections((prev) => (prev[item.title] ? prev : { ...prev, [item.title]: true }))
+      }
+    }
+  }, [pathname, items, isChildActive])
+
+  const handleOpenChange = (title: string, nextOpen: boolean) => {
+    setOpenSections((prev) => ({
+      ...prev,
+      [title]: nextOpen,
+    }))
+  }
+
   return (
     <SidebarGroup>
       <SidebarGroupLabel>Platform</SidebarGroupLabel>
       <SidebarMenu>
         {items.map((item) => {
-          const isChildActive = (subUrl: string) => {
-            const cleanSub = subUrl.split("?")[0]
-            if (cleanSub === "/dashboard") {
-              return pathname === "/dashboard"
-            }
-            return pathname === cleanSub || pathname.startsWith(cleanSub + "/")
-          }
-
           const hasActiveChild = item.items?.some((subItem) => isChildActive(subItem.url)) ?? false
-          const isSectionOpen = item.isActive || hasActiveChild
+          const isOpen = openSections[item.title] ?? item.isActive ?? false
 
           return (
             <Collapsible
               key={item.title}
-              defaultOpen={isSectionOpen}
+              open={isOpen}
+              onOpenChange={(nextOpen) => handleOpenChange(item.title, nextOpen)}
               className="group/collapsible"
               render={<SidebarMenuItem />}
             >

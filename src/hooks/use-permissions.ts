@@ -24,7 +24,15 @@ function getStoredRole(): string | null {
 export function useCan() {
   const { data: session, isPending } = authClient.useSession();
   const rawRole = (session?.user as { role?: string })?.role;
-  const [cachedRole, setCachedRole] = useState<string | null>(getStoredRole);
+  const [cachedRole, setCachedRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Read from storage only after initial mount/hydration to avoid hydration mismatch
+    const stored = getStoredRole();
+    if (stored) {
+      setCachedRole(stored);
+    }
+  }, []);
 
   useEffect(() => {
     if (rawRole) {
