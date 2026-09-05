@@ -1,5 +1,7 @@
 "use client"
 
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,17 +29,24 @@ export function NavProjects({
     icon: React.ReactNode
   }[]
 }) {
+  const pathname = usePathname()
   const { isMobile } = useSidebar()
   return (
     <SidebarGroup className="group-data-[collapsible=icon]:hidden">
       <SidebarGroupLabel>Projects</SidebarGroupLabel>
       <SidebarMenu>
-        {projects.map((item) => (
-          <SidebarMenuItem key={item.name}>
-            <SidebarMenuButton render={<a href={item.url} />}>
-              {item.icon}
-              <span>{item.name}</span>
-            </SidebarMenuButton>
+        {projects.map((item) => {
+          const cleanUrl = item.url.split("?")[0]
+          const isActive = pathname === cleanUrl || (cleanUrl !== "/dashboard" && pathname.startsWith(cleanUrl + "/"))
+          return (
+            <SidebarMenuItem key={item.name}>
+              <SidebarMenuButton
+                render={<Link href={item.url} prefetch={true} />}
+                isActive={isActive}
+              >
+                {item.icon}
+                <span>{item.name}</span>
+              </SidebarMenuButton>
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
@@ -75,7 +84,8 @@ export function NavProjects({
               </DropdownMenuContent>
             </DropdownMenu>
           </SidebarMenuItem>
-        ))}
+          );
+        })}
         <SidebarMenuItem>
           <SidebarMenuButton className="text-sidebar-foreground/70">
             <MoreHorizontalIcon className="text-sidebar-foreground/70" />

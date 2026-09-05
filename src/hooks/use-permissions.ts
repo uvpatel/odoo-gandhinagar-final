@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import {
   hasPermission,
@@ -9,10 +10,35 @@ import {
   type ActionName,
 } from "@/lib/auth/permissions";
 
+const ROLE_STORAGE_KEY = "odoo_user_role";
+
+function getStoredRole(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return localStorage.getItem(ROLE_STORAGE_KEY) || sessionStorage.getItem(ROLE_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
 export function useCan() {
   const { data: session, isPending } = authClient.useSession();
   const rawRole = (session?.user as { role?: string })?.role;
-  const role: AppRole = normalizeRole(rawRole);
+  const [cachedRole, setCachedRole] = useState<string | null>(getStoredRole);
+
+  useEffect(() => {
+    if (rawRole) {
+      setCachedRole(rawRole);
+      try {
+        localStorage.setItem(ROLE_STORAGE_KEY, rawRole);
+        sessionStorage.setItem(ROLE_STORAGE_KEY, rawRole);
+      } catch {}
+    }
+  }, [rawRole]);
+
+  // Fallback to cached role while session is loading to prevent layout shifts & sidebar flicker
+  const effectiveRole = rawRole || cachedRole;
+  const role: AppRole = normalizeRole(effectiveRole);
 
   const can = <R extends ResourceName>(resource: R, action: ActionName<R>): boolean => {
     return hasPermission(role, resource, action);
