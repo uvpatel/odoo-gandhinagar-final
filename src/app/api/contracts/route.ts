@@ -161,9 +161,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify employee exists
+    // Verify employee exists and load default organizational relations
     const [emp] = await db
-      .select({ id: employees.id, firstName: employees.firstName, lastName: employees.lastName })
+      .select({
+        id: employees.id,
+        firstName: employees.firstName,
+        lastName: employees.lastName,
+        departmentId: employees.departmentId,
+        jobPositionId: employees.jobPositionId,
+        workingScheduleId: employees.workingScheduleId,
+      })
       .from(employees)
       .where(eq(employees.id, body.employeeId))
       .limit(1);
@@ -175,8 +182,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Overlap prevention (Server-side validation)
-    if ((body.status || "draft") !== "cancelled") {
+    // Default salary structure fallback if none provided
+    let salaryStructureId = body.salaryStructureId || null;
+    if (!salaryStructureId) {
+      const [defaultStruct] = await db
+        .select({ id: salaryStructures.id })
+        .from(salaryStructures)
+        .limit(1);
+      salaryStructureId = defaultStruct?.id || null;
+    }
+
+    const departmentId = body.departmentId || emp.departmentId || null;
+    const jobPositionId = body.jobPositionId || emp.jobPositionId || null;
+    const workingScheduleId = body.workingScheduleId || emp.workingScheduleId || null;
+
+    // Overlap check and contract succession management
+    const contractStatus = body.status || "active";
+    if (contractStatus !== "cancelled") {
       const overlapCheck = await checkContractOverlap({
         employeeId: body.employeeId,
         startDate: body.startDate,
@@ -184,40 +206,77 @@ export async function POST(request: NextRequest) {
       });
 
       if (overlapCheck.hasOverlap) {
-        return NextResponse.json(
-          {
-            error: overlapCheck.message || "Contract dates overlap with an existing contract for this employee.",
-          },
-          { status: 409 }
+        const priorCon = overlapCheck.overlappingContract;
+        const canAutoConclude = Boolean(
+          priorCon &&
+          !priorCon.endDate &&
+          priorCon.startDate < body.startDate
         );
+
+        if (canAutoConclude && body.closePriorContract !== false) {
+          // Conclude the prior open-ended contract on the day before this new contract starts
+          const prevDay = new Date(new Date(body.startDate).getTime() - 24 * 60 * 60 * 1000)
+            .toISOString()
+            .split("T")[0];
+
+          await db
+            .update(contracts)
+            .set({
+              endDate: prevDay,
+              status: "expired",
+              updatedAt: new Date(),
+            })
+            .where(eq(contracts.id, priorCon!.id));
+        } else {
+          return NextResponse.json(
+            {
+              error: overlapCheck.message || "Contract dates overlap with an existing contract for this employee.",
+              canAutoConclude,
+            },
+            { status: 409 }
+          );
+        }
       }
     }
 
-    // Auto-generate reference number if not provided
+    // Auto-generate unique reference number with collision avoidance
     let contractNumber = body.contractNumber?.trim();
     if (!contractNumber) {
       const year = new Date().getFullYear();
       const [countResult] = await db
         .select({ count: sql<number>`count(*)::int` })
         .from(contracts);
-      const nextNum = (countResult?.count || 0) + 1;
+      let nextNum = (countResult?.count || 0) + 1;
       contractNumber = `CON-${year}-${String(nextNum).padStart(4, "0")}`;
+    }
+
+    let candidateNumber = contractNumber;
+    let collisionSuffix = 1;
+    while (true) {
+      const [existingCon] = await db
+        .select({ id: contracts.id })
+        .from(contracts)
+        .where(eq(contracts.contractNumber, candidateNumber))
+        .limit(1);
+      if (!existingCon) break;
+      candidateNumber = `${contractNumber}-${collisionSuffix}`;
+      collisionSuffix++;
     }
 
     const [newContract] = await db
       .insert(contracts)
       .values({
-        contractNumber,
+        contractNumber: candidateNumber,
         employeeId: body.employeeId,
         startDate: body.startDate,
         endDate: body.endDate || null,
-        departmentId: body.departmentId || null,
-        jobPositionId: body.jobPositionId || null,
-        workingScheduleId: body.workingScheduleId || null,
-        salaryStructureId: body.salaryStructureId || null,
+        departmentId,
+        jobPositionId,
+        workingScheduleId,
+        salaryStructureId,
         wage: String(wageNum),
         currency: body.currency || "INR",
-        status: body.status || "draft",
+        status: contractStatus,
       })
       .returning();
 

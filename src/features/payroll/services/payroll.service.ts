@@ -255,9 +255,18 @@ export async function getEligibleEmployeesForPeriod(
     contractMap.set(c.employeeId, list);
   }
 
-  const duplicates = await database.select({ employeeId: payslips.employeeId }).from(payslips).where(and(
-    sql`${payslips.status} <> 'cancelled'`, sql`${payslips.periodStart} <= ${periodEnd}`, sql`${payslips.periodEnd} >= ${periodStart}`
-  ));
+  const duplicates = await database
+    .select({ employeeId: payslips.employeeId })
+    .from(payslips)
+    .innerJoin(payruns, eq(payslips.payrunId, payruns.id))
+    .where(
+      and(
+        sql`${payslips.status} <> 'cancelled'`,
+        sql`${payruns.status} <> 'cancelled'`,
+        sql`${payslips.periodStart} <= ${periodEnd}`,
+        sql`${payslips.periodEnd} >= ${periodStart}`
+      )
+    );
   const duplicateIds = new Set(duplicates.map((s) => s.employeeId));
   const result: EligibleEmployee[] = activeEmployees.map((emp) => {
     const empContracts = contractMap.get(emp.id) || [];
@@ -294,6 +303,8 @@ export async function getEligibleEmployeesForPeriod(
     let eligibility: "eligible" | "warning" | "ineligible" = "eligible";
     let warningMessage: string | null = null;
 
+    const matchedMeta = empContracts.find((x) => x.id === c.id);
+
     if (!emp.bankAccountNumber) {
       eligibility = "warning";
       warningMessage = "Missing bank account number for direct disbursement";
@@ -306,19 +317,13 @@ export async function getEligibleEmployeesForPeriod(
       c.salaryStructureId !== targetStructureId
     ) {
       eligibility = "warning";
-      warningMessage = `Contract specifies structure, different from payrun structure`;
+      warningMessage = `Contract specifies ${matchedMeta?.salaryStructureName || "another structure"}, different from payrun structure`;
     }
 
-    if (targetStructureId && c.salaryStructureId && c.salaryStructureId !== targetStructureId) {
-      eligibility = "ineligible";
-      warningMessage = "Contract salary structure does not match selected structure";
-    }
     if (duplicateIds.has(emp.id)) {
       eligibility = "ineligible";
       warningMessage = "An overlapping payslip already exists";
     }
-
-    const matchedMeta = empContracts.find((x) => x.id === c.id);
 
     return {
       ...emp,
@@ -367,7 +372,7 @@ export async function createPayrunTransaction(
       periodStart: input.periodStart, periodEnd: input.periodEnd, status: "draft", createdBy: userId }).returning();
     await tx.insert(payslips).values(selected.map(({employee, contract}) => ({
       payslipNumber: `SLIP-${crypto.randomUUID()}`, payrunId: payrun.id, employeeId: employee.id, contractId: contract.id,
-      salaryStructureId: input.salaryStructureId, periodStart: input.periodStart, periodEnd: input.periodEnd, status: "draft" as const,
+      salaryStructureId: contract.salaryStructureId || input.salaryStructureId, periodStart: input.periodStart, periodEnd: input.periodEnd, status: "draft" as const,
     })));
     return payrun;
   });
@@ -608,7 +613,7 @@ export async function computePayrunExecution(payrunId: string) {
 
     // 3. Load structure & rules
     const structureId =
-      payrun.salaryStructureId;
+      slip.salaryStructureId || contract?.salaryStructureId || payrun.salaryStructureId;
     const structure = await getSalaryStructureById(structureId, db);
 
     const rules = (structure?.rules
@@ -676,7 +681,9 @@ export async function computePayrunExecution(payrunId: string) {
         throw new Error(contractResolutionError || "Missing or ambiguous contract covering the full payroll period");
       }
       if (!structure?.isActive) throw new Error("Salary structure is inactive or missing");
-      if (contract?.salaryStructureId && contract.salaryStructureId !== structureId) throw new Error("Contract structure mismatch");
+      if (contract?.salaryStructureId && contract.salaryStructureId !== structureId && slip.salaryStructureId !== structureId) {
+        throw new Error("Contract structure mismatch");
+      }
       computation = executeSalaryEngine(rules, context);
     } catch (error) { calculationError = error instanceof Error ? error.message : "Calculation failed"; }
 

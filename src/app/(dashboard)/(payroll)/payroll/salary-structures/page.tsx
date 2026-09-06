@@ -61,7 +61,9 @@ async function fetcher<T>(url: string): Promise<T[]> {
   if (!response.ok) {
     throw new Error(body.error || "Failed to load data");
   }
-  return body.data;
+  if (Array.isArray(body?.data)) return body.data;
+  if (Array.isArray(body)) return body;
+  return [];
 }
 
 export default function SalaryStructuresPage() {
@@ -83,18 +85,28 @@ export default function SalaryStructuresPage() {
     queryFn: () => fetcher<Rule>("/api/payroll/rules"),
   });
 
-  const structures = structuresQuery.data || [];
-  const rules = rulesQuery.data || [];
+  const structures: Structure[] = useMemo(() => {
+    if (Array.isArray(structuresQuery.data)) return structuresQuery.data;
+    if (Array.isArray((structuresQuery.data as any)?.data)) return (structuresQuery.data as any).data;
+    return [];
+  }, [structuresQuery.data]);
+
+  const rules: Rule[] = useMemo(() => {
+    if (Array.isArray(rulesQuery.data)) return rulesQuery.data;
+    if (Array.isArray((rulesQuery.data as any)?.data)) return (rulesQuery.data as any).data;
+    return [];
+  }, [rulesQuery.data]);
 
   // Filtered structures
   const filteredStructures = useMemo(() => {
+    if (!Array.isArray(structures)) return [];
     if (!searchTerm.trim()) return structures;
     const term = searchTerm.toLowerCase();
     return structures.filter(
       (s) =>
-        s.name.toLowerCase().includes(term) ||
-        s.code.toLowerCase().includes(term) ||
-        (s.description && s.description.toLowerCase().includes(term))
+        s?.name?.toLowerCase().includes(term) ||
+        s?.code?.toLowerCase().includes(term) ||
+        (s?.description && s.description.toLowerCase().includes(term))
     );
   }, [structures, searchTerm]);
 
@@ -163,7 +175,7 @@ export default function SalaryStructuresPage() {
       code: "",
       description: "",
       isActive: true,
-      ruleIds: rules.map((r) => r.id), // Default select all rules
+      ruleIds: Array.isArray(rules) ? rules.map((r) => r.id) : [], // Default select all rules
     });
   };
 
@@ -174,24 +186,25 @@ export default function SalaryStructuresPage() {
       code: s.code,
       description: s.description || "",
       isActive: s.isActive,
-      ruleIds: s.ruleIds || [],
+      ruleIds: Array.isArray(s.ruleIds) ? s.ruleIds : [],
     });
   };
 
   const handleToggleRule = (ruleId: string, checked: boolean) => {
     if (!form) return;
+    const currentRuleIds = Array.isArray(form.ruleIds) ? form.ruleIds : [];
     if (checked) {
-      setForm({ ...form, ruleIds: [...form.ruleIds, ruleId] });
+      setForm({ ...form, ruleIds: [...currentRuleIds, ruleId] });
     } else {
       setForm({
         ...form,
-        ruleIds: form.ruleIds.filter((id) => id !== ruleId),
+        ruleIds: currentRuleIds.filter((id) => id !== ruleId),
       });
     }
   };
 
   const handleMoveRule = (index: number, direction: "up" | "down") => {
-    if (!form) return;
+    if (!form || !Array.isArray(form.ruleIds)) return;
     const targetIndex = direction === "up" ? index - 1 : index + 1;
     if (targetIndex < 0 || targetIndex >= form.ruleIds.length) return;
 
@@ -303,16 +316,16 @@ export default function SalaryStructuresPage() {
 
               <CardContent className="space-y-4 pt-0">
                 <div className="text-xs font-medium text-muted-foreground flex items-center justify-between border-t border-b py-2">
-                  <span>Included Rules ({s.ruleCount})</span>
+                  <span>Included Rules ({s.ruleCount ?? (s.ruleIds?.length || 0)})</span>
                   <span>Execution Sequence</span>
                 </div>
 
-                {s.ruleIds.length === 0 ? (
+                {!s.ruleIds || s.ruleIds.length === 0 ? (
                   <p className="text-xs text-muted-foreground italic py-2">No rules attached to this structure.</p>
                 ) : (
                   <ol className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                     {s.ruleIds.map((ruleId, index) => {
-                      const ruleObj = rules.find((r) => r.id === ruleId);
+                      const ruleObj = (rules || []).find((r) => r.id === ruleId);
                       return (
                         <li
                           key={ruleId}
@@ -444,8 +457,8 @@ export default function SalaryStructuresPage() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto border rounded-md p-3">
-                  {rules.map((r) => {
-                    const isSelected = form.ruleIds.includes(r.id);
+                  {(rules || []).map((r) => {
+                    const isSelected = Boolean(form.ruleIds?.includes(r.id));
                     return (
                       <label
                         key={r.id}
@@ -465,12 +478,12 @@ export default function SalaryStructuresPage() {
                 </div>
 
                 {/* Selected Rules Sequence */}
-                {form.ruleIds.length > 0 && (
+                {(form.ruleIds || []).length > 0 && (
                   <div className="space-y-2 pt-2">
-                    <Label className="text-xs font-semibold">Execution Order ({form.ruleIds.length} rules selected)</Label>
+                    <Label className="text-xs font-semibold">Execution Order ({(form.ruleIds || []).length} rules selected)</Label>
                     <div className="space-y-1.5 border rounded-md p-2 max-h-52 overflow-y-auto">
-                      {form.ruleIds.map((ruleId, index) => {
-                        const ruleObj = rules.find((r) => r.id === ruleId);
+                      {(form.ruleIds || []).map((ruleId, index) => {
+                        const ruleObj = (rules || []).find((r) => r.id === ruleId);
                         return (
                           <div
                             key={ruleId}

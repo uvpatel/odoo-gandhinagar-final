@@ -147,6 +147,7 @@ export const employeeRole = ac.newRole({
 
   employee: [
     "read-self",
+    "read",
   ],
 
   contract: [
@@ -155,6 +156,7 @@ export const employeeRole = ac.newRole({
 
   attendance: [
     "read-self",
+    "read",
     "check-in",
     "check-out",
   ],

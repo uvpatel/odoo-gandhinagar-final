@@ -1,8 +1,8 @@
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { db } from "@/db/index";
-import { employees } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { employees, users, departments, jobPositions, workingSchedules } from "@/db/schema";
+import { eq, ilike, sql, or } from "drizzle-orm";
 import {
   hasPermission,
   normalizeRole,
@@ -78,21 +78,125 @@ export async function requirePermission<R extends ResourceName>(
 
 /**
  * Retrieves the Employee record linked to the authenticated session user.
+ * If no employee record is directly linked to the user ID:
+ * 1) Tries to find an existing employee record matching the user's email and links it.
+ * 2) If no employee record exists at all for the user, auto-provisions an active employee record
+ *    so attendance check-in/out, time-off, and self-service features work seamlessly.
  */
 export async function getCurrentEmployee(userId?: string) {
+  let sessionUser: { id: string; email?: string | null; name?: string | null } | null = null;
   if (!userId) {
     const session = await getAuthSession();
     if (!session?.user?.id) return null;
     userId = session.user.id;
+    sessionUser = session.user as any;
   }
 
+  // 1. Check for existing employee directly linked by userId
   const [employee] = await db
     .select()
     .from(employees)
     .where(eq(employees.userId, userId))
     .limit(1);
 
-  return employee || null;
+  if (employee) {
+    return employee;
+  }
+
+  // 2. Fetch the user details to get email and display name
+  if (!sessionUser) {
+    const [dbUser] = await db
+      .select({ id: users.id, email: users.email, name: users.name })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    sessionUser = dbUser || null;
+  }
+
+  if (!sessionUser) {
+    return null;
+  }
+
+  const cleanEmail = (sessionUser.email || "").trim().toLowerCase();
+
+  // 3. Check if an existing employee record matches by work email
+  if (cleanEmail) {
+    const [matchingEmp] = await db
+      .select()
+      .from(employees)
+      .where(ilike(employees.workEmail, cleanEmail))
+      .limit(1);
+
+    if (matchingEmp) {
+      // Auto-link this employee to the user account
+      const [linkedEmp] = await db
+        .update(employees)
+        .set({ userId: sessionUser.id, updatedAt: new Date() })
+        .where(eq(employees.id, matchingEmp.id))
+        .returning();
+      return linkedEmp || matchingEmp;
+    }
+  }
+
+  // 4. Auto-provision an active employee record for this user account
+  const rawName = (sessionUser.name || "").trim();
+  const nameParts = rawName ? rawName.split(/\s+/) : ["Employee", "User"];
+  const firstName = nameParts[0] || "Employee";
+  const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "User";
+
+  // Assign standard defaults
+  const [defaultDept] = await db.select({ id: departments.id }).from(departments).limit(1);
+  const [defaultJob] = await db.select({ id: jobPositions.id }).from(jobPositions).limit(1);
+  const [defaultSchedule] = await db.select({ id: workingSchedules.id }).from(workingSchedules).limit(1);
+
+  // Generate unique employee number (EMP-XXXX)
+  const [countResult] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(employees);
+  let counter = (countResult?.count || 0) + 1;
+  let candidateNum = `EMP-${String(counter).padStart(4, "0")}`;
+
+  while (true) {
+    const [exists] = await db
+      .select({ id: employees.id })
+      .from(employees)
+      .where(eq(employees.employeeNumber, candidateNum))
+      .limit(1);
+    if (!exists) break;
+    counter++;
+    candidateNum = `EMP-${String(counter).padStart(4, "0")}`;
+  }
+
+  const assignedEmail = cleanEmail || `${candidateNum.toLowerCase()}@peoplepay360.com`;
+
+  try {
+    const [newEmp] = await db
+      .insert(employees)
+      .values({
+        employeeNumber: candidateNum,
+        userId: sessionUser.id,
+        firstName,
+        lastName,
+        workEmail: assignedEmail,
+        departmentId: defaultDept?.id || null,
+        jobPositionId: defaultJob?.id || null,
+        workingScheduleId: defaultSchedule?.id || null,
+        employeeType: "full_time",
+        status: "active",
+        joiningDate: new Date().toISOString().split("T")[0],
+      })
+      .returning();
+
+    return newEmp;
+  } catch (insertError) {
+    console.error("Auto-provision employee record encountered error, falling back to query:", insertError);
+    const [fallbackEmp] = await db
+      .select()
+      .from(employees)
+      .where(or(eq(employees.userId, userId), ilike(employees.workEmail, assignedEmail)))
+      .limit(1);
+    return fallbackEmp || null;
+  }
 }
 
 /**

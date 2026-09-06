@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
       .where(eq(attendance.id, activeRecord.id))
       .returning();
 
-    return NextResponse.json({ message: "Checked out successfully", data: updated });
+    return NextResponse.json({ message: "Checked out successfully", data: updated, isCheckedIn: false });
   } catch (error: any) {
     const errorStatus = error.status || (error instanceof AuthorizationError ? error.status : 500);
     return NextResponse.json(

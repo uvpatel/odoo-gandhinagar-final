@@ -100,8 +100,8 @@ export function ContractFormDialog({
       const autoNumber = `CON-${year}-${String(nextNum).padStart(4, "0")}`;
 
       const initialEmp = preselectedEmployeeId
-        ? employeesList.find((e) => e.id === preselectedEmployeeId) || employeesList[0]
-        : employeesList[0];
+        ? employeesList.find((e) => e.id === preselectedEmployeeId)
+        : null;
 
       setFormData({
         contractNumber: autoNumber,
@@ -126,18 +126,22 @@ export function ContractFormDialog({
     setFormData((prev) => ({
       ...prev,
       employeeId: empId,
-      departmentId: emp?.departmentId || prev.departmentId,
-      jobPositionId: emp?.jobPositionId || prev.jobPositionId,
+      departmentId: emp?.departmentId || prev.departmentId || departmentsList[0]?.id || "",
+      jobPositionId: emp?.jobPositionId || prev.jobPositionId || jobPositionsList[0]?.id || "",
+      salaryStructureId: prev.salaryStructureId || salaryStructuresList[0]?.id || "",
+      workingScheduleId: prev.workingScheduleId || schedulesList[0]?.id || "",
     }));
   };
 
+  const [closePriorContract, setClosePriorContract] = React.useState(true);
+
   // Real-time client-side validation & overlap check
-  const overlapWarning = React.useMemo(() => {
+  const overlapCheck = React.useMemo(() => {
     if (!formData.employeeId || !formData.startDate || formData.status === "cancelled") {
       return null;
     }
 
-    const check = checkContractOverlapInMemory(
+    return checkContractOverlapInMemory(
       allContracts,
       {
         id: editingContract?.id,
@@ -147,9 +151,22 @@ export function ContractFormDialog({
         status: formData.status,
       }
     );
-
-    return check.hasOverlap ? check.message : null;
   }, [formData.employeeId, formData.startDate, formData.endDate, formData.status, editingContract?.id, allContracts]);
+
+  const isBlockingOverlap = Boolean(
+    overlapCheck?.hasOverlap && (!overlapCheck.isOpenEndedPrior || !closePriorContract)
+  );
+
+  const getPreviousDayFormatted = (dateStr: string) => {
+    if (!dateStr) return "prior day";
+    try {
+      const d = new Date(dateStr + "T00:00:00");
+      d.setDate(d.getDate() - 1);
+      return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+    } catch {
+      return "prior day";
+    }
+  };
 
   // Validate form fields
   const validate = (): boolean => {
@@ -176,8 +193,8 @@ export function ContractFormDialog({
       errors.salaryStructureId = "Salary structure is required for payroll calculation";
     }
 
-    if (overlapWarning) {
-      errors.overlap = overlapWarning;
+    if (isBlockingOverlap && overlapCheck?.message) {
+      errors.overlap = overlapCheck.message;
     }
 
     setClientErrors(errors);
@@ -200,7 +217,7 @@ export function ContractFormDialog({
         const res = await fetch(`/api/contracts/${editingContract.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(formData),
+          body: JSON.stringify({ ...formData, closePriorContract }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Failed to update contract");
@@ -212,7 +229,7 @@ export function ContractFormDialog({
         const res = await fetch("/api/contracts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(formData),
+          body: JSON.stringify({ ...formData, closePriorContract }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Failed to create contract");
@@ -257,13 +274,41 @@ export function ContractFormDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 pt-2">
-          {/* Overlap Error Banner */}
-          {overlapWarning && (
+          {/* Overlap & Succession Banners */}
+          {overlapCheck?.hasOverlap && overlapCheck.isOpenEndedPrior && (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2.5 animate-in fade-in">
+              <InfoIcon className="size-4 shrink-0 text-amber-600 mt-0.5" />
+              <div className="flex-1">
+                <span className="font-bold">Contract Succession Notice:</span>
+                <p className="mt-0.5">
+                  An active open-ended contract ({overlapCheck.overlappingContract?.contractNumber || "existing"}) exists for this employee.
+                </p>
+                <label className="mt-2 flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={closePriorContract}
+                    onChange={(e) => setClosePriorContract(e.target.checked)}
+                    className="rounded border-amber-400 text-primary focus:ring-primary h-4 w-4"
+                  />
+                  <span className="font-medium text-amber-900 dark:text-amber-200">
+                    Auto-conclude prior contract on {getPreviousDayFormatted(formData.startDate)} and mark as expired
+                  </span>
+                </label>
+                {!closePriorContract && (
+                  <p className="mt-1 text-rose-600 dark:text-rose-400 font-semibold text-[11px]">
+                    Cannot establish contract with overlapping dates without concluding the prior contract.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {overlapCheck?.hasOverlap && !overlapCheck.isOpenEndedPrior && (
             <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-700 dark:text-rose-300 flex items-start gap-2.5 animate-in fade-in">
               <ShieldAlertIcon className="size-4 shrink-0 text-rose-600 mt-0.5" />
               <div>
                 <span className="font-bold">Overlapping Contract Conflict:</span>
-                <p className="mt-0.5">{overlapWarning}</p>
+                <p className="mt-0.5">{overlapCheck.message}</p>
                 <p className="mt-1 text-[11px] opacity-85">
                   Adjust the start or end dates, or conclude the existing contract prior to starting a new one.
                 </p>
@@ -514,8 +559,8 @@ export function ContractFormDialog({
             </Button>
             <Button
               type="submit"
-              disabled={isSubmitting || Boolean(overlapWarning)}
-              className={Boolean(overlapWarning) ? "opacity-50 cursor-not-allowed" : ""}
+              disabled={isSubmitting || isBlockingOverlap}
+              className={isBlockingOverlap ? "opacity-50 cursor-not-allowed" : ""}
             >
               {isSubmitting
                 ? "Saving..."

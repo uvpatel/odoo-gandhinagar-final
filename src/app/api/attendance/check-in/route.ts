@@ -32,6 +32,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       isCheckedIn: Boolean(activeRecord),
       activeRecord: activeRecord || null,
+      employee: currentEmp,
     });
   } catch (error: any) {
     return NextResponse.json({ isCheckedIn: false, activeRecord: null });
@@ -69,7 +70,7 @@ export async function POST(request: NextRequest) {
 
     if (activeRecord) {
       return NextResponse.json(
-        { error: "Already checked in. Please check out first.", data: activeRecord },
+        { error: "Already checked in. Please check out first.", data: activeRecord, isCheckedIn: true },
         { status: 400 }
       );
     }
@@ -93,13 +94,12 @@ export async function POST(request: NextRequest) {
 
     if (existingToday) {
       // Re-open check-in for today by clearing checkOut
+      const initialCheckIn = existingToday.checkIn ?? now;
       const [updated] = await db
         .update(attendance)
         .set({
-          checkIn: now,
+          checkIn: initialCheckIn,
           checkOut: null,
-          workedMinutes: 0,
-          overtimeMinutes: 0,
           status: "present",
           updatedAt: now,
         })
@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { message: "Checked in successfully", data: resultRecord },
+      { message: "Checked in successfully", data: resultRecord, isCheckedIn: true },
       { status: 201 }
     );
   } catch (error: any) {

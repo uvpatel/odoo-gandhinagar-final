@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { usePayrunWizardStore } from "../../store/wizard-store";
 import { payrunScopeSchema } from "../../schemas/payrun.schema";
@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowRightIcon, CalendarIcon, LayersIcon, SparklesIcon } from "lucide-react";
+import { ArrowRightIcon, CalendarIcon, LayersIcon, SparklesIcon, AlertTriangleIcon } from "lucide-react";
 import { toast } from "sonner";
 
 interface SalaryStructure {
@@ -49,9 +49,27 @@ export function StepScope() {
   const [formRunName, setFormRunName] = useState(runName);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Auto initialize default dates to current month if empty
-  useEffect(() => {
-    if (!formStart || !formEnd) {
+  // Fetch existing payruns to suggest next available payroll period
+  const { data: payrunsData } = useQuery<{
+    data: Array<{ id: string; name: string; periodStart: string; periodEnd: string; status: string }>;
+  }>({
+    queryKey: ["payruns"],
+    queryFn: async () => {
+      const res = await fetch("/api/payroll/payruns");
+      if (!res.ok) return { data: [] };
+      return res.json();
+    },
+  });
+
+  const payruns = useMemo(() => {
+    if (Array.isArray(payrunsData)) return payrunsData;
+    if (Array.isArray((payrunsData as any)?.data)) return (payrunsData as any).data;
+    return [];
+  }, [payrunsData]);
+
+  const nextSuggestedCycle = useMemo(() => {
+    const activePayruns = payruns.filter((p: any) => p.status !== "cancelled");
+    if (activePayruns.length === 0) {
       const now = new Date();
       const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
         .toISOString()
@@ -59,11 +77,48 @@ export function StepScope() {
       const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0)
         .toISOString()
         .slice(0, 10);
-
-      setFormStart(firstDay);
-      setFormEnd(lastDay);
+      return { start: firstDay, end: lastDay };
     }
-  }, [formStart, formEnd]);
+
+    const sortedEnds = activePayruns
+      .map((p: any) => p.periodEnd)
+      .sort((a: string, b: string) => (a > b ? -1 : 1));
+    const latestEnd = sortedEnds[0];
+
+    const [year, month] = latestEnd.split("-").map(Number);
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const nextYear = month === 12 ? year + 1 : year;
+
+    const startStr = `${nextYear}-${String(nextMonth).padStart(2, "0")}-01`;
+    const lastDayOfMonth = new Date(nextYear, nextMonth, 0).getDate();
+    const endStr = `${nextYear}-${String(nextMonth).padStart(2, "0")}-${String(lastDayOfMonth).padStart(2, "0")}`;
+
+    return { start: startStr, end: endStr };
+  }, [payruns]);
+
+  // Auto initialize default dates to next available cycle if empty
+  useEffect(() => {
+    if (!formStart || !formEnd) {
+      setFormStart(nextSuggestedCycle.start);
+      setFormEnd(nextSuggestedCycle.end);
+
+      const d = new Date(nextSuggestedCycle.start + "T00:00:00");
+      const monthName = d.toLocaleString("default", { month: "long", year: "numeric" });
+      if (!runName) {
+        setFormRunName(`Monthly Payrun — ${monthName}`);
+      }
+    }
+  }, [formStart, formEnd, nextSuggestedCycle, runName]);
+
+  const conflictingPayrun = useMemo(() => {
+    if (!formStart || !formEnd) return null;
+    return payruns.find(
+      (p: any) =>
+        p.status !== "cancelled" &&
+        p.periodStart <= formEnd &&
+        p.periodEnd >= formStart
+    );
+  }, [payruns, formStart, formEnd]);
 
   // Fetch salary structures from DB
   const { data: structuresData, isLoading: isLoadingStructures } = useQuery<{
@@ -77,7 +132,11 @@ export function StepScope() {
     },
   });
 
-  const structures = structuresData?.data || [];
+  const structures: SalaryStructure[] = Array.isArray(structuresData)
+    ? structuresData
+    : Array.isArray((structuresData as any)?.data)
+    ? (structuresData as any).data
+    : [];
 
   // Auto-select standard structure if none selected
   useEffect(() => {
@@ -90,7 +149,7 @@ export function StepScope() {
   // Auto update generated name when dates change
   useEffect(() => {
     if (formStart && !runName) {
-      const d = new Date(formStart);
+      const d = new Date(formStart + "T00:00:00");
       const monthName = d.toLocaleString("default", { month: "long", year: "numeric" });
       setFormRunName(`Monthly Payrun — ${monthName}`);
     }
@@ -207,6 +266,37 @@ export function StepScope() {
             )}
           </div>
         </div>
+
+        {/* Overlapping Payrun Conflict Banner */}
+        {conflictingPayrun && (
+          <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-start gap-2.5 text-xs text-amber-900 dark:text-amber-200">
+            <AlertTriangleIcon className="size-4 shrink-0 text-amber-600 mt-0.5" />
+            <div className="flex-1 space-y-1">
+              <p className="font-semibold">
+                Payrun already exists for this period: {conflictingPayrun.name} ({conflictingPayrun.periodStart} to {conflictingPayrun.periodEnd})
+              </p>
+              <p className="text-muted-foreground">
+                Employees who already have payslips in that cycle cannot be duplicated. Select an open period to process new payroll.
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs gap-1.5 mt-1 border-amber-500/40 hover:bg-amber-500/20"
+                onClick={() => {
+                  setFormStart(nextSuggestedCycle.start);
+                  setFormEnd(nextSuggestedCycle.end);
+                  const d = new Date(nextSuggestedCycle.start + "T00:00:00");
+                  const monthName = d.toLocaleString("default", { month: "long", year: "numeric" });
+                  setFormRunName(`Monthly Payrun — ${monthName}`);
+                }}
+              >
+                <SparklesIcon className="size-3 text-amber-600" />
+                <span>Switch to Next Recommended Cycle ({nextSuggestedCycle.start} &rarr; {nextSuggestedCycle.end})</span>
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Run Name */}
         <div className="space-y-2">

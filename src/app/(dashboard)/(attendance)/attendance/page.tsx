@@ -150,13 +150,20 @@ function AttendanceContent() {
         fetch("/api/employees"),
       ]);
 
-      const [attData, empData] = await Promise.all([attRes.json(), empRes.json()]);
-
-      if (attData.data) {
-        setAttendanceList(attData.data);
+      if (attRes.ok) {
+        const attData = await attRes.json();
+        if (attData?.data) {
+          setAttendanceList(attData.data);
+        }
+      } else {
+        const err = await attRes.json().catch(() => ({}));
+        console.error("Attendance fetch error:", err);
       }
 
-      if (empData.data) setEmployeesList(empData.data);
+      if (empRes.ok) {
+        const empData = await empRes.json();
+        if (empData?.data) setEmployeesList(empData.data);
+      }
     } catch (err) {
       console.error("Failed to load attendance records:", err);
       toast.error("Failed to fetch attendance data");
@@ -168,6 +175,15 @@ function AttendanceContent() {
   React.useEffect(() => {
     fetchActiveStatus();
     fetchData();
+
+    const handleSync = () => {
+      fetchActiveStatus();
+      fetchData();
+    };
+    window.addEventListener("attendance-status-changed", handleSync);
+    return () => {
+      window.removeEventListener("attendance-status-changed", handleSync);
+    };
   }, [fetchActiveStatus, fetchData]);
 
   // Live timer for check-in widget
@@ -234,6 +250,7 @@ function AttendanceContent() {
           description: `Total duration recorded. Have a great day!`,
         });
       }
+      window.dispatchEvent(new CustomEvent("attendance-status-changed"));
       await fetchActiveStatus();
       await fetchData();
     } catch (err: any) {

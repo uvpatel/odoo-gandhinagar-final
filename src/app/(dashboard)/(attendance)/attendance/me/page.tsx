@@ -85,6 +85,15 @@ export default function MyAttendancePage() {
   React.useEffect(() => {
     fetchActiveStatus();
     fetchData();
+
+    const handleSync = () => {
+      fetchActiveStatus();
+      fetchData();
+    };
+    window.addEventListener("attendance-status-changed", handleSync);
+    return () => {
+      window.removeEventListener("attendance-status-changed", handleSync);
+    };
   }, [fetchActiveStatus, fetchData]);
 
   // Timer interval for elapsed time
@@ -123,6 +132,7 @@ export default function MyAttendancePage() {
 
         toast.success("Checked out successfully!");
       }
+      window.dispatchEvent(new CustomEvent("attendance-status-changed"));
       await fetchActiveStatus();
       await fetchData();
     } catch (err: any) {

@@ -41,6 +41,7 @@ import {
   Loader2Icon,
   CreditCardIcon,
   CoinsIcon,
+  SparklesIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -180,6 +181,30 @@ export function StepEmployees() {
     (e) => e.eligibility === "eligible" || e.eligibility === "warning"
   ).length;
 
+  const allOverlapping =
+    employees.length > 0 &&
+    eligibleCount === 0 &&
+    employees.every((e) => e.eligibility === "ineligible" && e.warningMessage?.toLowerCase().includes("overlapping"));
+
+  const handleAdvanceToNextMonth = () => {
+    const [year, month] = (periodEnd || "2026-09-30").split("-").map(Number);
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const nextYear = month === 12 ? year + 1 : year;
+    const startStr = `${nextYear}-${String(nextMonth).padStart(2, "0")}-01`;
+    const lastDay = new Date(nextYear, nextMonth, 0).getDate();
+    const endStr = `${nextYear}-${String(nextMonth).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+    const d = new Date(startStr + "T00:00:00");
+    const monthName = d.toLocaleString("default", { month: "long", year: "numeric" });
+    usePayrunWizardStore.getState().setScope({
+      salaryStructureId,
+      salaryStructureName,
+      periodStart: startStr,
+      periodEnd: endStr,
+      runName: `Monthly Payrun — ${monthName}`,
+    });
+    toast.success(`Advanced payroll scope to ${monthName} (${startStr} to ${endStr})`);
+  };
+
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
       {/* Scope Summary Banner */}
@@ -317,7 +342,32 @@ export function StepEmployees() {
               <p className="text-xs mt-1">Try broadening your search query or department filter.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div>
+              {allOverlapping && (
+                <div className="m-4 p-4 bg-amber-500/10 border border-amber-500/30 rounded-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+                  <div className="flex items-start gap-2.5">
+                    <AlertTriangleIcon className="size-5 shrink-0 text-amber-600 mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-amber-900 dark:text-amber-200">
+                        A payrun already exists for {periodStart} &rarr; {periodEnd}
+                      </p>
+                      <p className="text-muted-foreground mt-0.5">
+                        All employees have already been issued payslips for this period. Advance to the next cycle to process new payslips.
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={handleAdvanceToNextMonth}
+                    className="gap-1.5 shrink-0 bg-amber-600 hover:bg-amber-700 text-white"
+                  >
+                    <SparklesIcon className="size-3.5" />
+                    <span>Advance to Next Month</span>
+                  </Button>
+                </div>
+              )}
+
+              <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -460,7 +510,8 @@ export function StepEmployees() {
                 </TableBody>
               </Table>
             </div>
-          )}
+          </div>
+        )}
         </CardContent>
 
         {/* Footer Actions */}

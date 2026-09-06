@@ -13,6 +13,7 @@ export interface OverlapCheckResult {
   hasOverlap: boolean;
   overlappingContract?: ContractLike;
   message?: string;
+  isOpenEndedPrior?: boolean;
 }
 
 export type PayrollPeriodInput =
@@ -77,6 +78,7 @@ export function checkContractOverlapInMemory(
     const isOverlapping = candStart <= exEnd && candEnd >= exStart;
 
     if (isOverlapping) {
+      const isOpenEndedPrior = !existing.endDate && exStart < candStart;
       const exRangeStr = existing.endDate
         ? `${existing.startDate} to ${existing.endDate}`
         : `started ${existing.startDate} (open-ended)`;
@@ -87,6 +89,7 @@ export function checkContractOverlapInMemory(
       const ref = existing.contractNumber || existing.id;
       return {
         hasOverlap: true,
+        isOpenEndedPrior,
         overlappingContract: existing,
         message: `Contract date range (${candRangeStr}) overlaps with existing contract ${ref} (${exRangeStr}). An employee cannot have concurrent contracts during the same period.`,
       };
